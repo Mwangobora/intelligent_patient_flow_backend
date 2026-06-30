@@ -1,0 +1,1047 @@
+Set up the project structure for the backend repository named:
+
+```text
+intelligent_patient_flow_backend
+```
+
+This backend belongs to an Intelligent Patient Flow and Appointment Scheduling System for healthcare facilities.
+
+This task is only for establishing a clean, production-ready Django project structure.
+
+Do not design or implement the database yet.
+
+Do not create:
+
+* domain models
+* business migrations
+* database relationships
+* roles
+* permissions
+* RBAC logic
+* serializers with real business fields
+* business APIs
+* CRUD endpoints
+* business selectors
+* business services
+* seed data
+* fixtures
+* default users
+* default roles
+* default permissions
+* placeholder AI models
+
+The goal is to prepare only the backend foundation, application modules, internal folder structure, Docker environment, configuration, testing foundation, and development tooling.
+
+## Technology stack
+
+Prepare the project for:
+
+* Python
+* Django
+* Django REST Framework
+* PostgreSQL
+* Redis
+* Celery
+* JWT authentication
+* Docker
+* Docker Compose
+* pytest
+* pytest-django
+* Ruff
+* drf-spectacular
+
+Do not implement full authentication, dynamic RBAC, or business workflows yet.
+
+## Repository and project name
+
+Use:
+
+```text
+intelligent_patient_flow_backend
+```
+
+Do not use:
+
+```text
+judica
+judica_backend
+judica-backend
+```
+
+The Django configuration package should remain:
+
+```text
+config
+```
+
+The repository root should be:
+
+```text
+intelligent_patient_flow_backend/
+```
+
+## Django applications
+
+Create the following Django applications inside the `apps/` directory:
+
+```text
+apps/
+├── accounts/
+├── facilities/
+├── patients/
+├── practitioners/
+├── scheduling/
+├── queueing/
+├── checkins/
+├── notifications/
+├── reporting/
+├── audit/
+└── intelligence/
+```
+
+These must be valid Django applications with correct `AppConfig` classes.
+
+Use full dotted application paths in `INSTALLED_APPS`, for example:
+
+```python
+"apps.accounts"
+"apps.facilities"
+"apps.patients"
+"apps.practitioners"
+```
+
+Each application must use the correct full dotted path in its `apps.py`.
+
+Example:
+
+```python
+from django.apps import AppConfig
+
+
+class AccountsConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.accounts"
+```
+
+Do not create domain models yet.
+
+Do not create business migrations.
+
+Only Django framework migrations may run at this stage.
+
+## Final top-level project structure
+
+Create this structure:
+
+```text
+intelligent_patient_flow_backend/
+├── apps/
+│   ├── accounts/
+│   ├── facilities/
+│   ├── patients/
+│   ├── practitioners/
+│   ├── scheduling/
+│   ├── queueing/
+│   ├── checkins/
+│   ├── notifications/
+│   ├── reporting/
+│   ├── audit/
+│   └── intelligence/
+│
+├── common/
+├── config/
+├── tests/
+├── requirements/
+├── scripts/
+├── docker/
+├── manage.py
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+├── pytest.ini
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+## Internal application structure
+
+Prepare every Django application with this structure:
+
+```text
+apps/<app_name>/
+├── migrations/
+├── serializers/
+├── selectors/
+├── services/
+├── permissions/
+├── views/
+├── urls/
+├── tests/
+├── admin.py
+├── apps.py
+└── __init__.py
+```
+
+Each directory must be a valid Python package where appropriate.
+
+Example:
+
+```text
+apps/scheduling/
+├── migrations/
+│   └── __init__.py
+├── serializers/
+│   └── __init__.py
+├── selectors/
+│   └── __init__.py
+├── services/
+│   └── __init__.py
+├── permissions/
+│   └── __init__.py
+├── views/
+│   └── __init__.py
+├── urls/
+│   └── __init__.py
+├── tests/
+│   └── __init__.py
+├── admin.py
+├── apps.py
+└── __init__.py
+```
+
+Do not create `models.py`.
+
+Do not create a `models/` package yet.
+
+The models structure will be added only after the database design and relationships are approved.
+
+Do not create fake files such as:
+
+```text
+appointment_service.py
+role_serializer.py
+queue_selector.py
+```
+
+unless real functionality is being implemented.
+
+For now, internal packages may contain only `__init__.py`.
+
+## Application responsibilities
+
+Use the following boundaries when business implementation begins later.
+
+### `accounts`
+
+Will handle:
+
+* users
+* authentication
+* passwords
+* dynamic roles
+* dynamic permissions
+* role assignments
+* permission assignments
+* facility memberships
+* user access management
+
+No roles or permissions should be implemented now.
+
+No default or hardcoded roles should ever be introduced.
+
+### `facilities`
+
+Will handle:
+
+* organizations
+* hospitals
+* clinics
+* branches
+* departments
+* specialties
+* service points
+* consultation rooms
+* operating hours
+* facility configuration
+
+### `patients`
+
+Will handle:
+
+* patient profiles
+* patient identifiers
+* patient contacts
+* emergency contacts
+* preferences
+* registration
+
+It should not become a complete electronic medical record unless that scope is explicitly added later.
+
+### `practitioners`
+
+Will handle:
+
+* doctors
+* nurses
+* other healthcare professionals
+* specialties
+* facility assignments
+* departments
+* services offered
+
+### `scheduling`
+
+Will handle:
+
+* appointments
+* practitioner availability
+* appointment slots
+* shifts
+* breaks
+* leave
+* rescheduling
+* cancellation
+* room allocation
+
+### `queueing`
+
+Will handle:
+
+* queues
+* queue entries
+* queue numbers
+* patient calling
+* patient skipping
+* patient transfer
+* queue priority
+* service progress
+* waiting-time calculation
+
+### `checkins`
+
+Will handle:
+
+* reception check-in
+* mobile check-in
+* QR code check-in
+* self-service check-in
+* patient arrival confirmation
+
+### `notifications`
+
+Will handle:
+
+* in-app notifications
+* email
+* SMS
+* push notifications
+* appointment reminders
+* queue updates
+* delivery tracking
+
+### `reporting`
+
+Will handle:
+
+* patient waiting-time reports
+* appointment utilization reports
+* practitioner workload
+* attendance reports
+* queue-performance reports
+* dashboard metrics
+* report exports
+
+### `audit`
+
+Will handle:
+
+* security activity
+* user actions
+* entity changes
+* role and permission changes
+* appointment changes
+* queue changes
+* request context
+
+### `intelligence`
+
+Will handle:
+
+* waiting-time prediction
+* patient-arrival forecasting
+* appointment-slot recommendations
+* model versions
+* prediction history
+* future model-training support
+
+Do not implement AI behavior in this task.
+
+## Internal package responsibilities
+
+### `serializers/`
+
+Will later contain:
+
+* request validation
+* response representation
+* input serializers
+* output serializers
+
+Do not place business workflows inside serializers.
+
+### `selectors/`
+
+Will later contain:
+
+* read-only Django ORM queries
+* optimized querysets
+* reusable filtering
+* `select_related`
+* `prefetch_related`
+
+Selectors must never perform database writes.
+
+### `services/`
+
+Will later contain:
+
+* business logic
+* database writes
+* transactions
+* multi-model workflows
+* domain operations
+
+Critical workflows should not be placed in serializers, views, or Django signals.
+
+### `permissions/`
+
+Will later contain:
+
+* custom DRF permission classes
+* dynamic authorization policies
+* facility access checks
+* organization access checks
+
+Do not create hardcoded role checks.
+
+Do not implement authorization logic such as:
+
+```python
+if user.role == "admin":
+```
+
+No role or permission implementation is required in this task.
+
+### `views/`
+
+Will later contain thin API views.
+
+Views should eventually:
+
+1. validate request access
+2. call selectors for reads
+3. call services for writes
+4. serialize responses
+5. return appropriate HTTP responses
+
+### `urls/`
+
+Will contain application-level URL routing.
+
+Do not create fake business routes yet.
+
+### `tests/`
+
+Will contain application-specific tests when real functionality is introduced.
+
+Do not create empty test files for functionality that does not exist.
+
+## Shared technical packages
+
+Create:
+
+```text
+common/
+├── api/
+├── exceptions/
+├── middleware/
+├── pagination/
+├── permissions/
+├── validators/
+├── utilities/
+├── testing/
+└── __init__.py
+```
+
+Each folder should be a valid Python package.
+
+Do not add business-specific code yet.
+
+### `common/api/`
+
+Reserved for:
+
+* API response helpers
+* base API classes
+* shared response schemas
+* shared exception formatting
+
+### `common/exceptions/`
+
+Reserved for:
+
+* base application exceptions
+* validation exceptions
+* authorization exceptions
+* conflict exceptions
+* resource-not-found exceptions
+
+### `common/middleware/`
+
+Reserved for:
+
+* request ID middleware
+* request context
+* audit context
+* facility-context resolution
+
+### `common/pagination/`
+
+Reserved for shared pagination classes.
+
+### `common/permissions/`
+
+Reserved for shared permission foundations.
+
+Do not place business-specific permission codes here.
+
+### `common/validators/`
+
+Reserved for reusable validation utilities.
+
+### `common/utilities/`
+
+Reserved for clearly named shared helpers.
+
+Do not create one generic dumping file such as:
+
+```text
+utils.py
+helpers.py
+common.py
+```
+
+### `common/testing/`
+
+Reserved for:
+
+* shared test utilities
+* test helpers
+* reusable assertions
+
+Do not turn `common` into a dumping ground.
+
+Code that belongs to a business domain must remain inside that domain application.
+
+## Configuration structure
+
+Create:
+
+```text
+config/
+├── settings/
+│   ├── base.py
+│   ├── local.py
+│   ├── test.py
+│   └── production.py
+├── api_router.py
+├── celery.py
+├── urls.py
+├── asgi.py
+├── wsgi.py
+└── __init__.py
+```
+
+## Settings responsibilities
+
+### `config/settings/base.py`
+
+Include shared settings for:
+
+* installed applications
+* middleware
+* templates
+* Django REST Framework
+* drf-spectacular
+* PostgreSQL through environment variables
+* Redis
+* Celery
+* timezone
+* internationalization
+* static files
+* logging foundation
+
+### `config/settings/local.py`
+
+Include local development settings such as:
+
+* debug enabled
+* local allowed hosts
+* development CORS origins
+* development email backend
+* readable local logging
+
+### `config/settings/test.py`
+
+Include testing configuration such as:
+
+* test settings
+* fast password hashing when authentication is implemented
+* synchronous Celery execution where appropriate
+* test-specific logging
+* isolated test database behavior
+
+### `config/settings/production.py`
+
+Include production-ready settings such as:
+
+* debug disabled
+* secure cookies
+* SSL redirect support
+* trusted origins
+* production allowed hosts
+* environment-based security
+* production logging
+* secure proxy headers where appropriate
+
+Do not hardcode secrets in any settings file.
+
+## API routing foundation
+
+Prepare all future APIs to use:
+
+```text
+/api/v1/
+```
+
+Create:
+
+```text
+config/api_router.py
+```
+
+For now, it may expose only a simple API root or empty versioned namespace.
+
+Do not create business CRUD endpoints.
+
+Do not create fake routes for modules that have no implementation.
+
+## API documentation
+
+Configure drf-spectacular.
+
+Prepare routes such as:
+
+```text
+/api/schema/
+/api/docs/
+/api/redoc/
+```
+
+Do not document nonexistent business endpoints.
+
+## Health endpoints
+
+Create only these infrastructure endpoints:
+
+```text
+/health/live/
+/health/ready/
+```
+
+### `/health/live/`
+
+Should confirm that the Django application process is running.
+
+### `/health/ready/`
+
+Should verify that:
+
+* PostgreSQL is reachable
+* Redis is reachable
+
+Do not expose:
+
+* database credentials
+* Redis credentials
+* hostnames
+* connection strings
+* internal exception traces
+* sensitive infrastructure details
+
+## Docker requirements
+
+Running either command from the repository root must start the complete local development environment:
+
+```bash
+docker compose up
+```
+
+or:
+
+```bash
+docker compose up --build
+```
+
+The Docker Compose environment must include:
+
+```text
+api
+postgres
+redis
+celery_worker
+celery_beat
+```
+
+## Automated API startup sequence
+
+The API container must automatically:
+
+1. wait for PostgreSQL
+2. wait for Redis
+3. run:
+
+```bash
+python manage.py migrate --noinput
+```
+
+4. run:
+
+```bash
+python manage.py collectstatic --noinput
+```
+
+5. start Django on:
+
+```text
+0.0.0.0:8000
+```
+
+No manual migration command should be required after:
+
+```bash
+docker compose up
+```
+
+or:
+
+```bash
+docker compose up --build
+```
+
+Use:
+
+```text
+scripts/entrypoint.sh
+```
+
+The entrypoint must use:
+
+```bash
+set -e
+```
+
+The script must stop immediately when a startup command fails.
+
+Only the API initialization process should run migrations.
+
+The following services must not independently run migrations:
+
+```text
+celery_worker
+celery_beat
+```
+
+This avoids migration race conditions.
+
+The system must also support:
+
+```bash
+docker compose up --build -d
+```
+
+## Docker health checks
+
+Add health checks for:
+
+* PostgreSQL
+* Redis
+
+Use service dependencies where appropriate, but do not depend only on Docker Compose `depends_on`.
+
+The API startup script must actively verify PostgreSQL and Redis readiness.
+
+## Development server
+
+For local development, the API container may use Django's development server:
+
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+
+Do not use Django's development server in the production configuration.
+
+Prepare the structure so a production server such as Gunicorn can be configured later.
+
+## Requirements structure
+
+Create:
+
+```text
+requirements/
+├── base.txt
+├── local.txt
+├── test.txt
+└── production.txt
+```
+
+### `base.txt`
+
+Shared runtime dependencies.
+
+### `local.txt`
+
+Development-only dependencies.
+
+### `test.txt`
+
+Testing dependencies.
+
+### `production.txt`
+
+Production-only dependencies.
+
+Avoid unnecessary dependencies.
+
+Do not install packages that are not being used or prepared for by the current stack.
+
+## Testing foundation
+
+Configure:
+
+* pytest
+* pytest-django
+* test settings
+* shared `conftest.py`
+
+Create:
+
+```text
+tests/
+├── integration/
+├── api/
+├── conftest.py
+└── __init__.py
+```
+
+Add only foundation tests for:
+
+* Django startup
+* live health endpoint
+* ready health endpoint
+* API root
+* settings loading
+
+Do not create business tests yet.
+
+Do not create factories for models that do not exist.
+
+## Ruff configuration
+
+Configure Ruff inside:
+
+```text
+pyproject.toml
+```
+
+Use Ruff for:
+
+* linting
+* formatting
+* import sorting
+* detecting unused imports
+* enforcing basic Python quality
+
+Do not disable important rules only to make linting pass.
+
+## Logging foundation
+
+Configure readable and production-ready logging for:
+
+* Django
+* API requests
+* Celery
+* startup errors
+* database connection failures
+* Redis connection failures
+
+Do not log:
+
+* passwords
+* JWT tokens
+* refresh tokens
+* secret keys
+* database passwords
+* Redis credentials
+* sensitive request bodies
+* personal patient information
+
+## Environment variables
+
+Create `.env.example` containing placeholders for:
+
+```text
+DJANGO_SETTINGS_MODULE
+DJANGO_SECRET_KEY
+DJANGO_DEBUG
+DJANGO_ALLOWED_HOSTS
+DJANGO_CORS_ALLOWED_ORIGINS
+
+POSTGRES_DB
+POSTGRES_USER
+POSTGRES_PASSWORD
+POSTGRES_HOST
+POSTGRES_PORT
+
+REDIS_URL
+CELERY_BROKER_URL
+CELERY_RESULT_BACKEND
+
+APP_ENV
+```
+
+Use the correct settings path, for example:
+
+```text
+DJANGO_SETTINGS_MODULE=config.settings.local
+```
+
+Do not place real credentials in `.env.example`.
+
+Do not commit `.env`.
+
+## README requirements
+
+Document:
+
+* product name
+* repository name
+* repository purpose
+* modular-monolith architecture
+* Django application names
+* internal application structure
+* local environment setup
+* copying `.env.example` to `.env`
+* Docker startup commands
+* automatic migration behavior
+* health endpoints
+* API documentation routes
+* running tests
+* running Ruff
+* stopping containers
+* rebuilding containers
+
+Include the main startup command:
+
+```bash
+docker compose up --build
+```
+
+Clearly state that:
+
+* business models have not been implemented
+* database design has not been finalized
+* business APIs have not been implemented
+* dynamic roles and permissions will be designed later
+
+## Important restrictions
+
+Do not:
+
+* create business models
+* create `models.py`
+* create a `models/` package
+* design database relationships
+* create business migrations
+* create a custom user model yet
+* create role models
+* create permission models
+* implement RBAC
+* seed roles
+* seed permissions
+* create default roles
+* create default permissions
+* create business serializers
+* create business selectors
+* create business services
+* create CRUD APIs
+* create placeholder business logic
+* create fake AI models
+* create microservices
+* create a generic repository layer over Django ORM
+* create unnecessary abstraction classes
+* use the name Judica anywhere in the repository
+* claim business functionality has been completed
+
+## Verification
+
+After the structure is created, run:
+
+```bash
+python manage.py check
+python manage.py migrate
+ruff check .
+pytest
+docker compose config
+```
+
+Also verify:
+
+```bash
+docker compose up --build
+```
+
+Confirm that:
+
+* PostgreSQL starts successfully
+* Redis starts successfully
+* the API waits for dependencies
+* migrations run automatically
+* static files are collected
+* Django starts on port 8000
+* Celery worker starts
+* Celery beat starts
+* `/health/live/` responds successfully
+* `/health/ready/` responds successfully
+* API documentation loads
+* no business models were created
+* no business migrations were created
+* no roles or permissions were created
+* the name Judica does not appear anywhere
+
+At the end, provide:
+
+1. The final directory tree.
+2. Files created.
+3. Files changed.
+4. Configuration decisions.
+5. Docker startup sequence.
+6. Commands executed.
+7. Django check results.
+8. Ruff results.
+9. Test results.
+10. Docker verification results.
+11. Any assumptions or incomplete infrastructure items.
+
+Do not report that checks or tests passed unless they were actually executed.
