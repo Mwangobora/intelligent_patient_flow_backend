@@ -2,7 +2,8 @@
 
 Repository name: `intelligent_patient_flow_backend`
 
-This repository contains the backend foundation for an Intelligent Patient Flow and Appointment Scheduling System. The current state is architecture-only: project structure, app modules, Docker environment, settings split, health checks, API documentation routes, testing foundation, and development tooling.
+The Intelligent Patient Flow and Appointment Scheduling System is a healthcare management product designed to help hospitals and clinics organize patient appointments, doctor schedules, check-ins, and service queues. The system will allow patients to book, reschedule, or cancel appointments, select doctors or specialties, check in through reception, mobile devices, or QR codes, and monitor their queue status in real time. Healthcare staff will use the web system to manage practitioner availability, shifts, consultation rooms, service points, patient flow, and daily operations. The product will also provide reports on waiting time, appointment utilization, attendance, and practitioner workload. In later phases, intelligent features will be added to predict waiting times, forecast patient arrivals, and recommend suitable appointment slots. The backend will serve both the web dashboard and the mobile application through secure, versioned APIs.
+
 
 ## Architecture
 
