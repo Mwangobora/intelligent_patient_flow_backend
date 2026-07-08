@@ -74,8 +74,8 @@ class PractitionerFacilityAssignment(TimeStampedModel, ActiveModel):
             models.CheckConstraint(condition=Q(is_primary=False) | Q(is_active=True), name="ck_practitioner_facility_primary_active"),
         ]
         indexes = [
-            models.Index(fields=["practitioner", "is_active"], name="idx_practitioner_facility_assignments_practitioner"),
-            models.Index(fields=["facility", "is_active"], name="idx_practitioner_facility_assignments_facility"),
+            models.Index(fields=["practitioner", "is_active"], name="idx_prac_fac_asn_prac"),
+            models.Index(fields=["facility", "is_active"], name="idx_prac_fac_asn_fac"),
         ]
 
     # TODO: enforce practitioner facility assignment validation trigger from the SQL file in a custom migration.
@@ -98,8 +98,8 @@ class PractitionerDepartmentAssignment(TimeStampedModel, ActiveModel):
             models.CheckConstraint(condition=Q(is_primary=False) | Q(is_active=True), name="ck_practitioner_department_primary_active"),
         ]
         indexes = [
-            models.Index(fields=["practitioner_facility_assignment", "is_active"], name="idx_practitioner_department_assignments_pfa"),
-            models.Index(fields=["department"], name="idx_practitioner_department_assignments_department"),
+            models.Index(fields=["practitioner_facility_assignment", "is_active"], name="idx_prac_dept_asn_pfa"),
+            models.Index(fields=["department"], name="idx_prac_dept_asn_dept"),
         ]
 
     # TODO: enforce practitioner department assignment validation trigger from the SQL file in a custom migration.
@@ -122,8 +122,8 @@ class PractitionerSpecialtyAssignment(TimeStampedModel, ActiveModel):
             models.CheckConstraint(condition=Q(is_primary=False) | Q(is_active=True), name="ck_practitioner_specialty_primary_active"),
         ]
         indexes = [
-            models.Index(fields=["practitioner_facility_assignment", "is_active"], name="idx_practitioner_specialty_assignments_pfa"),
-            models.Index(fields=["facility_specialty"], name="idx_practitioner_specialty_assignments_specialty"),
+            models.Index(fields=["practitioner_facility_assignment", "is_active"], name="idx_prac_spec_asn_pfa"),
+            models.Index(fields=["facility_specialty"], name="idx_prac_spec_asn_spec"),
         ]
 
     # TODO: enforce practitioner specialty assignment triggers from the SQL file in a custom migration.
@@ -149,7 +149,7 @@ class PractitionerCredentialType(TimeStampedModel, ActiveModel):
             models.UniqueConstraint(Lower("name"), F("organization"), condition=Q(organization__isnull=False), name="uq_practitioner_credential_types_org_name"),
             models.UniqueConstraint(fields=["organization", "code"], condition=Q(organization__isnull=False), name="uq_practitioner_credential_types_org_code"),
         ]
-        indexes = [models.Index(fields=["organization"], name="idx_practitioner_credential_types_org")]
+        indexes = [models.Index(fields=["organization"], name="idx_prac_cred_type_org")]
 
 
 class PractitionerCredential(TimeStampedModel, ActiveModel):
@@ -178,13 +178,13 @@ class PractitionerCredential(TimeStampedModel, ActiveModel):
         constraints = [
             models.UniqueConstraint(fields=["credential_type", "credential_number_hash"], name="uq_practitioner_credentials_type_hash"),
             models.CheckConstraint(condition=Q(credential_number_hash__regex=r"^[0-9A-Fa-f]{64}$"), name="ck_practitioner_credentials_hash"),
-            models.CheckConstraint(condition=Q(verification_status__in=[c for c, _ in VerificationStatus.choices]), name="ck_practitioner_credentials_status"),
+            models.CheckConstraint(condition=Q(verification_status__in=["unverified", "pending", "verified", "rejected"]), name="ck_practitioner_credentials_status"),
             models.CheckConstraint(condition=Q(expires_on__isnull=True) | Q(issued_on__isnull=True) | Q(expires_on__gte=F("issued_on")), name="ck_practitioner_credentials_dates"),
             models.CheckConstraint(condition=Q(issuing_country_code__isnull=True) | Q(issuing_country_code=models.functions.Upper("issuing_country_code")), name="ck_practitioner_credentials_country_upper"),
         ]
         indexes = [
-            models.Index(fields=["practitioner", "is_active"], name="idx_practitioner_credentials_practitioner"),
-            models.Index(fields=["credential_type"], name="idx_practitioner_credentials_type"),
+            models.Index(fields=["practitioner", "is_active"], name="idx_prac_cred_prac"),
+            models.Index(fields=["credential_type"], name="idx_prac_cred_type"),
         ]
 
     # TODO: enforce practitioner credential validation trigger and final verification-state semantics from the SQL file in a custom migration.

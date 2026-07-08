@@ -37,11 +37,11 @@ class Queue(TimeStampedModel):
             models.UniqueConstraint(fields=["service_point", "queue_date"], condition=Q(facility_specialty__isnull=True), name="uq_queues_general"),
             models.UniqueConstraint(fields=["service_point", "facility_specialty", "queue_date"], condition=Q(facility_specialty__isnull=False), name="uq_queues_specialty"),
             models.CheckConstraint(condition=Q(next_sequence_number__gt=0), name="ck_queues_sequence"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_queues_status"),
+            models.CheckConstraint(condition=Q(status__in=["draft", "open", "paused", "closed", "cancelled"]), name="ck_queues_status"),
         ]
         indexes = [
             models.Index(fields=["queue_date", "status"], name="idx_queues_date_status"),
-            models.Index(fields=["service_point", "status"], name="idx_queues_service_point_status"),
+            models.Index(fields=["service_point", "status"], name="idx_queue_sp_status"),
         ]
 
 
@@ -80,7 +80,7 @@ class QueueEntry(TimeStampedModel):
             models.CheckConstraint(condition=Q(sequence_number__gt=0), name="ck_queue_entries_sequence"),
             models.CheckConstraint(condition=Q(priority_level__gte=0, priority_level__lte=3), name="ck_queue_entries_priority"),
             models.CheckConstraint(condition=Q(priority_level=0) | Q(priority_reason__isnull=False), name="ck_queue_entries_priority_reason"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_queue_entries_status"),
+            models.CheckConstraint(condition=Q(status__in=["waiting", "called", "in_service", "completed", "skipped", "cancelled", "transferred"]), name="ck_queue_entries_status"),
         ]
         indexes = [
             models.Index(fields=["queue", "status"], name="idx_queue_entries_queue_status"),
@@ -140,12 +140,12 @@ class QueueEntryEvent(models.Model):
         db_table = "queue_entry_events"
         constraints = [
             models.UniqueConstraint(fields=["queue_entry"], condition=Q(event_type="joined"), name="uq_queue_entry_events_one_joined"),
-            models.CheckConstraint(condition=Q(event_type__in=[c for c, _ in EventType.choices]), name="ck_queue_entry_events_type"),
-            models.CheckConstraint(condition=Q(from_status__isnull=True) | Q(from_status__in=[c for c, _ in Status.choices]), name="ck_queue_entry_events_from_status"),
-            models.CheckConstraint(condition=Q(to_status__isnull=True) | Q(to_status__in=[c for c, _ in Status.choices]), name="ck_queue_entry_events_to_status"),
+            models.CheckConstraint(condition=Q(event_type__in=["joined", "called", "recalled", "skipped", "service_started", "service_completed", "cancelled", "transferred", "priority_changed"]), name="ck_queue_entry_events_type"),
+            models.CheckConstraint(condition=Q(from_status__isnull=True) | Q(from_status__in=["waiting", "called", "in_service", "completed", "skipped", "cancelled", "transferred"]), name="ck_queue_entry_events_from_status"),
+            models.CheckConstraint(condition=Q(to_status__isnull=True) | Q(to_status__in=["waiting", "called", "in_service", "completed", "skipped", "cancelled", "transferred"]), name="ck_queue_entry_events_to_status"),
             models.CheckConstraint(condition=~Q(event_type__in=["cancelled", "transferred", "priority_changed"]) | Q(reason__isnull=False), name="ck_queue_entry_events_reason"),
         ]
         indexes = [
-            models.Index(fields=["queue_entry", "occurred_at"], name="idx_queue_entry_events_entry_time"),
-            models.Index(fields=["event_type", "occurred_at"], name="idx_queue_entry_events_type_time"),
+            models.Index(fields=["queue_entry", "occurred_at"], name="idx_qentry_evt_entry_time"),
+            models.Index(fields=["event_type", "occurred_at"], name="idx_qentry_evt_type_time"),
         ]

@@ -225,9 +225,9 @@ class FacilitySpecialty(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["facility"], name="idx_facility_specialties_facility"),
-            models.Index(fields=["specialty"], name="idx_facility_specialties_specialty"),
-            models.Index(fields=["department"], name="idx_facility_specialties_department"),
+            models.Index(fields=["facility"], name="idx_fac_spec_fac"),
+            models.Index(fields=["specialty"], name="idx_fac_spec_spec"),
+            models.Index(fields=["department"], name="idx_fac_spec_dept"),
         ]
 
     # TODO: enforce facility child scope validation trigger from the SQL file in a custom migration.
@@ -300,7 +300,7 @@ class ConsultationRoom(TimeStampedModel, ActiveModel):
             ),
             models.CheckConstraint(condition=Q(capacity__gt=0), name="ck_consultation_rooms_capacity"),
         ]
-        indexes = [models.Index(fields=["facility"], name="idx_consultation_rooms_facility")]
+        indexes = [models.Index(fields=["facility"], name="idx_consult_room_fac")]
 
     # TODO: enforce facility child scope validation trigger from the SQL file in a custom migration.
 
@@ -337,7 +337,7 @@ class FacilityOperatingHour(TimeStampedModel, ActiveModel):
                 name="ck_facility_operating_hours_shape",
             ),
         ]
-        indexes = [models.Index(fields=["facility", "day_of_week", "is_active"], name="idx_facility_operating_hours_lookup")]
+        indexes = [models.Index(fields=["facility", "day_of_week", "is_active"], name="idx_fac_op_hour_lookup")]
 
     # TODO: enforce operating hours overlap trigger from the SQL file in a custom migration.
 
@@ -373,7 +373,7 @@ class FacilityScheduleException(TimeStampedModel, ActiveModel):
                 name="ck_facility_schedule_exceptions_shape",
             ),
         ]
-        indexes = [models.Index(fields=["facility", "exception_date", "is_active"], name="idx_facility_schedule_exceptions_lookup")]
+        indexes = [models.Index(fields=["facility", "exception_date", "is_active"], name="idx_fac_sched_exc_lookup")]
 
     # TODO: enforce schedule exception trigger from the SQL file in a custom migration.
 

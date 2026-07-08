@@ -63,21 +63,21 @@ class PatientNotification(TimeStampedModel):
         db_table = "patient_notifications"
         constraints = [
             models.UniqueConstraint(fields=["idempotency_key"], condition=Q(idempotency_key__isnull=False), name="uq_patient_notifications_idempotency"),
-            models.CheckConstraint(condition=Q(notification_type__in=[c for c, _ in NotificationType.choices]), name="ck_patient_notifications_type"),
-            models.CheckConstraint(condition=Q(channel__in=[c for c, _ in Channel.choices]), name="ck_patient_notifications_channel"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_patient_notifications_status"),
+            models.CheckConstraint(condition=Q(notification_type__in=["appointment_confirmation", "appointment_reminder", "appointment_rescheduled", "appointment_cancelled", "queue_joined", "queue_updated", "queue_called", "general"]), name="ck_patient_notifications_type"),
+            models.CheckConstraint(condition=Q(channel__in=["sms", "email", "push", "in_app"]), name="ck_patient_notifications_channel"),
+            models.CheckConstraint(condition=Q(status__in=["pending", "processing", "sent", "delivered", "failed", "cancelled"]), name="ck_patient_notifications_status"),
             models.CheckConstraint(condition=Q(attempt_count__gte=0), name="ck_patient_notifications_attempts"),
-            models.CheckConstraint(condition=Q(channel=Channel.IN_APP) | Q(destination_encrypted__isnull=False), name="ck_patient_notifications_destination"),
-            models.CheckConstraint(condition=~Q(channel__in=[Channel.PUSH, Channel.IN_APP]) | Q(recipient_user__isnull=False), name="ck_patient_notifications_recipient"),
+            models.CheckConstraint(condition=Q(channel="in_app") | Q(destination_encrypted__isnull=False), name="ck_patient_notifications_destination"),
+            models.CheckConstraint(condition=~Q(channel__in=["push", "in_app"]) | Q(recipient_user__isnull=False), name="ck_patient_notifications_recipient"),
             models.CheckConstraint(condition=~(Q(appointment__isnull=False) & Q(queue_entry__isnull=False)), name="ck_patient_notifications_single_source"),
             models.CheckConstraint(condition=~(Q(delivered_at__isnull=False) & Q(failed_at__isnull=False)), name="ck_patient_notifications_outcome"),
         ]
         indexes = [
-            models.Index(fields=["status", "scheduled_for"], name="idx_patient_notifications_dispatch", condition=Q(status__in=["pending", "processing"])),
-            models.Index(fields=["patient", "-created_at"], name="idx_patient_notifications_patient_time"),
-            models.Index(fields=["appointment"], name="idx_patient_notifications_appointment"),
-            models.Index(fields=["queue_entry"], name="idx_patient_notifications_queue_entry"),
-            models.Index(fields=["recipient_user"], name="idx_patient_notifications_recipient"),
+            models.Index(fields=["status", "scheduled_for"], name="idx_pat_notif_dispatch", condition=Q(status__in=["pending", "processing"])),
+            models.Index(fields=["patient", "-created_at"], name="idx_pat_notif_pat_time"),
+            models.Index(fields=["appointment"], name="idx_pat_notif_appt"),
+            models.Index(fields=["queue_entry"], name="idx_pat_notif_queue"),
+            models.Index(fields=["recipient_user"], name="idx_pat_notif_recip"),
         ]
 
     # TODO: enforce patient notification timeline/state validation trigger from the SQL file in a custom migration.
@@ -102,8 +102,8 @@ class UserPushDevice(TimeStampedModel, ActiveModel):
         db_table = "user_push_devices"
         constraints = [
             models.UniqueConstraint(fields=["token_hash"], name="uq_user_push_devices_hash"),
-            models.CheckConstraint(condition=Q(platform__in=[c for c, _ in Platform.choices]), name="ck_user_push_devices_platform"),
+            models.CheckConstraint(condition=Q(platform__in=["android", "ios", "web"]), name="ck_user_push_devices_platform"),
             models.CheckConstraint(condition=Q(token_hash__regex=r"^[0-9A-Fa-f]{64}$"), name="ck_user_push_devices_hash"),
             models.CheckConstraint(condition=Q(revoked_at__isnull=True) | Q(is_active=False), name="ck_user_push_devices_revocation"),
         ]
-        indexes = [models.Index(fields=["user", "is_active"], name="idx_user_push_devices_user_active")]
+        indexes = [models.Index(fields=["user", "is_active"], name="idx_push_dev_user_act")]

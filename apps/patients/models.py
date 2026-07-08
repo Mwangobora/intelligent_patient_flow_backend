@@ -88,7 +88,7 @@ class Patient(TimeStampedModel, ActiveModel):
             ),
             models.CheckConstraint(
                 condition=Q(sex_code__isnull=True)
-                | Q(sex_code__in=[choice for choice, _ in SexCode.choices]),
+                | Q(sex_code__in=["male", "female", "intersex", "unknown"]),
                 name="ck_patients_sex_code",
             ),
             models.CheckConstraint(
@@ -98,7 +98,7 @@ class Patient(TimeStampedModel, ActiveModel):
         ]
         indexes = [
             models.Index(fields=["organization"], name="idx_patients_organization"),
-            models.Index(fields=["registered_facility"], name="idx_patients_registered_facility"),
+            models.Index(fields=["registered_facility"], name="idx_patients_reg_fac"),
             models.Index(fields=["organization", "last_name", "first_name"], name="idx_patients_name"),
         ]
 
@@ -157,7 +157,7 @@ class PatientIdentifierType(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["organization"], name="idx_patient_identifier_types_org"),
+            models.Index(fields=["organization"], name="idx_pat_id_type_org"),
         ]
 
     def __str__(self) -> str:
@@ -235,7 +235,7 @@ class PatientIdentifier(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["patient"], name="idx_patient_identifiers_patient"),
+            models.Index(fields=["patient"], name="idx_pat_ident_patient"),
             models.Index(fields=["identifier_type"], name="idx_patient_identifiers_type"),
         ]
 
@@ -385,8 +385,8 @@ class PatientRelatedPerson(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["patient"], name="idx_patient_related_persons_patient"),
-            models.Index(fields=["relationship_type"], name="idx_patient_related_persons_relationship"),
+            models.Index(fields=["patient"], name="idx_pat_rel_person_pat"),
+            models.Index(fields=["relationship_type"], name="idx_pat_rel_person_rel"),
         ]
 
 
@@ -434,7 +434,7 @@ class RelatedPersonContact(TimeStampedModel, ActiveModel):
                 name="uq_related_person_contacts_primary",
             ),
             models.CheckConstraint(
-                condition=Q(channel__in=[choice for choice, _ in Channel.choices]),
+                condition=Q(channel__in=["phone", "email"]),
                 name="ck_related_person_contacts_channel",
             ),
             models.CheckConstraint(
@@ -450,7 +450,7 @@ class RelatedPersonContact(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["related_person"], name="idx_related_person_contacts_person"),
+            models.Index(fields=["related_person"], name="idx_rel_person_ctc"),
         ]
 
 
@@ -530,8 +530,8 @@ class PatientAccessGrant(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["patient", "is_active"], name="idx_patient_access_grants_patient_active"),
-            models.Index(fields=["grantee_user", "is_active"], name="idx_patient_access_grants_grantee_active"),
+            models.Index(fields=["patient", "is_active"], name="idx_pat_access_pat_act"),
+            models.Index(fields=["grantee_user", "is_active"], name="idx_pat_access_grant_act"),
             models.Index(fields=["role"], name="idx_patient_access_grants_role"),
         ]
 

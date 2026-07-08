@@ -24,11 +24,11 @@ class QueueWaitTimePrediction(CreatedAtModel):
         db_table = "queue_wait_time_predictions"
         constraints = [
             models.CheckConstraint(condition=Q(predicted_wait_minutes__gte=0), name="ck_queue_predictions_minutes"),
-            models.CheckConstraint(condition=Q(prediction_method__in=[c for c, _ in PredictionMethod.choices]), name="ck_queue_predictions_method"),
-            models.CheckConstraint(condition=~Q(prediction_method=PredictionMethod.MACHINE_LEARNING) | Q(model_version__isnull=False), name="ck_queue_predictions_model"),
+            models.CheckConstraint(condition=Q(prediction_method__in=["rule_based", "machine_learning"]), name="ck_queue_predictions_method"),
+            models.CheckConstraint(condition=~Q(prediction_method="machine_learning") | Q(model_version__isnull=False), name="ck_queue_predictions_model"),
             models.CheckConstraint(condition=Q(confidence_score__isnull=True) | Q(confidence_score__gte=0, confidence_score__lte=1), name="ck_queue_predictions_confidence"),
         ]
         indexes = [
-            models.Index(fields=["queue_entry", "-generated_at"], name="idx_queue_predictions_entry_time"),
-            models.Index(fields=["model_version", "generated_at"], name="idx_queue_predictions_model_time"),
+            models.Index(fields=["queue_entry", "-generated_at"], name="idx_qwait_pred_entry_time"),
+            models.Index(fields=["model_version", "generated_at"], name="idx_qwait_pred_model_time"),
         ]

@@ -34,8 +34,8 @@ class PractitionerAvailabilityPeriod(TimeStampedModel, ActiveModel):
             models.CheckConstraint(condition=Q(valid_until__isnull=True) | Q(valid_until__gte=F("valid_from")), name="ck_practitioner_availability_dates"),
         ]
         indexes = [
-            models.Index(fields=["practitioner_facility_assignment", "day_of_week", "is_active"], name="idx_practitioner_availability_lookup"),
-            models.Index(fields=["valid_from", "valid_until"], name="idx_practitioner_availability_dates"),
+            models.Index(fields=["practitioner_facility_assignment", "day_of_week", "is_active"], name="idx_prac_avail_lookup"),
+            models.Index(fields=["valid_from", "valid_until"], name="idx_prac_avail_dates"),
         ]
 
   
@@ -63,12 +63,12 @@ class PractitionerLeaveRequest(TimeStampedModel):
         db_table = "practitioner_leave_requests"
         constraints = [
             models.CheckConstraint(condition=Q(ends_at__gt=F("starts_at")), name="ck_practitioner_leave_times"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_practitioner_leave_status"),
+            models.CheckConstraint(condition=Q(status__in=["pending", "approved", "rejected", "cancelled"]), name="ck_practitioner_leave_status"),
             models.CheckConstraint(
                 condition=(
-                    (Q(status=Status.PENDING) & Q(decided_by__isnull=True) & Q(decided_at__isnull=True) & Q(cancelled_by__isnull=True) & Q(cancelled_at__isnull=True) & Q(cancellation_reason__isnull=True))
-                    | (Q(status__in=[Status.APPROVED, Status.REJECTED]) & Q(decided_by__isnull=False) & Q(decided_at__isnull=False) & Q(cancelled_by__isnull=True) & Q(cancelled_at__isnull=True) & Q(cancellation_reason__isnull=True))
-                    | (Q(status=Status.CANCELLED) & Q(cancelled_by__isnull=False) & Q(cancelled_at__isnull=False) & Q(cancellation_reason__isnull=False))
+                    (Q(status="pending") & Q(decided_by__isnull=True) & Q(decided_at__isnull=True) & Q(cancelled_by__isnull=True) & Q(cancelled_at__isnull=True) & Q(cancellation_reason__isnull=True))
+                    | (Q(status__in=["approved", "rejected"]) & Q(decided_by__isnull=False) & Q(decided_at__isnull=False) & Q(cancelled_by__isnull=True) & Q(cancelled_at__isnull=True) & Q(cancellation_reason__isnull=True))
+                    | (Q(status="cancelled") & Q(cancelled_by__isnull=False) & Q(cancelled_at__isnull=False) & Q(cancellation_reason__isnull=False))
                 ),
                 name="ck_practitioner_leave_state",
             ),
@@ -103,14 +103,14 @@ class PractitionerShift(TimeStampedModel):
         db_table = "practitioner_shifts"
         constraints = [
             models.CheckConstraint(condition=Q(ends_at__gt=F("starts_at")), name="ck_practitioner_shifts_times"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_practitioner_shifts_status"),
+            models.CheckConstraint(condition=Q(status__in=["scheduled", "in_progress", "completed", "cancelled"]), name="ck_practitioner_shifts_status"),
             models.CheckConstraint(condition=Q(actual_ended_at__isnull=True) | (Q(actual_started_at__isnull=False) & Q(actual_ended_at__gt=F("actual_started_at"))), name="ck_practitioner_shifts_actual_times"),
         ]
         indexes = [
-            models.Index(fields=["practitioner_facility_assignment", "starts_at", "ends_at"], name="idx_practitioner_shifts_practitioner_time"),
-            models.Index(fields=["practitioner_department_assignment"], name="idx_practitioner_shifts_department"),
-            models.Index(fields=["service_point", "starts_at", "ends_at"], name="idx_practitioner_shifts_service_point_time"),
-            models.Index(fields=["consultation_room", "starts_at", "ends_at"], name="idx_practitioner_shifts_room_time"),
+            models.Index(fields=["practitioner_facility_assignment", "starts_at", "ends_at"], name="idx_prac_shift_prac_time"),
+            models.Index(fields=["practitioner_department_assignment"], name="idx_prac_shift_dept"),
+            models.Index(fields=["service_point", "starts_at", "ends_at"], name="idx_prac_shift_sp_time"),
+            models.Index(fields=["consultation_room", "starts_at", "ends_at"], name="idx_prac_shift_room_time"),
             models.Index(fields=["status"], name="idx_practitioner_shifts_status"),
         ]
 
@@ -139,12 +139,12 @@ class AppointmentSlot(TimeStampedModel):
             models.CheckConstraint(condition=Q(ends_at__gt=F("starts_at")), name="ck_appointment_slots_times"),
             models.CheckConstraint(condition=Q(capacity__gt=0), name="ck_appointment_slots_capacity"),
             models.CheckConstraint(condition=Q(booked_count__gte=0) & Q(booked_count__lte=F("capacity")), name="ck_appointment_slots_booked_count"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_appointment_slots_status"),
+            models.CheckConstraint(condition=Q(status__in=["available", "full", "blocked", "cancelled"]), name="ck_appointment_slots_status"),
         ]
         indexes = [
-            models.Index(fields=["practitioner_shift", "starts_at"], name="idx_appointment_slots_shift_time"),
-            models.Index(fields=["facility_specialty", "starts_at"], name="idx_appointment_slots_specialty_time"),
-            models.Index(fields=["starts_at"], name="idx_appointment_slots_available", condition=Q(status="available", is_online_bookable=True)),
+            models.Index(fields=["practitioner_shift", "starts_at"], name="idx_appt_slot_shift_time"),
+            models.Index(fields=["facility_specialty", "starts_at"], name="idx_appt_slot_spec_time"),
+            models.Index(fields=["starts_at"], name="idx_appt_slot_avail", condition=Q(status="available", is_online_bookable=True)),
         ]
 
 
@@ -191,13 +191,13 @@ class Appointment(TimeStampedModel):
         constraints = [
             models.UniqueConstraint(fields=["facility", "appointment_number"], name="uq_appointments_facility_number"),
             models.CheckConstraint(condition=Q(scheduled_end__gt=F("scheduled_start")), name="ck_appointments_times"),
-            models.CheckConstraint(condition=Q(status__in=[c for c, _ in Status.choices]), name="ck_appointments_status"),
-            models.CheckConstraint(condition=Q(booking_channel__in=[c for c, _ in BookingChannel.choices]), name="ck_appointments_booking_channel"),
+            models.CheckConstraint(condition=Q(status__in=["pending", "confirmed", "checked_in", "queued", "in_service", "completed", "cancelled", "no_show", "rescheduled"]), name="ck_appointments_status"),
+            models.CheckConstraint(condition=Q(booking_channel__in=["mobile", "web", "reception", "api"]), name="ck_appointments_booking_channel"),
             models.CheckConstraint(condition=Q(rescheduled_from__isnull=True) | ~Q(rescheduled_from=F("id")), name="ck_appointments_no_self_reschedule"),
             models.CheckConstraint(
                 condition=(
-                    (Q(status=Status.CANCELLED) & Q(cancelled_at__isnull=False) & Q(cancelled_by__isnull=False) & Q(cancellation_reason__isnull=False))
-                    | (Q(status__in=[c for c, _ in Status.choices if c != Status.CANCELLED]) & Q(cancelled_at__isnull=True) & Q(cancelled_by__isnull=True) & Q(cancellation_reason__isnull=True))
+                    (Q(status="cancelled") & Q(cancelled_at__isnull=False) & Q(cancelled_by__isnull=False) & Q(cancellation_reason__isnull=False))
+                    | (Q(status__in=["pending", "confirmed", "checked_in", "queued", "in_service", "completed", "no_show", "rescheduled"]) & Q(cancelled_at__isnull=True) & Q(cancelled_by__isnull=True) & Q(cancellation_reason__isnull=True))
                 ),
                 name="ck_appointments_cancellation",
             ),
@@ -210,12 +210,12 @@ class Appointment(TimeStampedModel):
         indexes = [
             models.Index(fields=["facility", "scheduled_start"], name="idx_appointments_facility_time"),
             models.Index(fields=["patient", "scheduled_start"], name="idx_appointments_patient_time"),
-            models.Index(fields=["facility_specialty", "scheduled_start"], name="idx_appointments_specialty_time"),
-            models.Index(fields=["practitioner_facility_assignment", "scheduled_start"], name="idx_appointments_practitioner_time"),
+            models.Index(fields=["facility_specialty", "scheduled_start"], name="idx_appt_spec_time"),
+            models.Index(fields=["practitioner_facility_assignment", "scheduled_start"], name="idx_appt_prac_time"),
             models.Index(fields=["practitioner_shift"], name="idx_appointments_shift"),
             models.Index(fields=["appointment_slot"], name="idx_appointments_slot"),
             models.Index(fields=["status", "scheduled_start"], name="idx_appointments_status_time"),
-            models.Index(fields=["rescheduled_from"], name="idx_appointments_rescheduled_from"),
+            models.Index(fields=["rescheduled_from"], name="idx_appt_resched_from"),
         ]
 
     # TODO: enforce appointment validation triggers and PostgreSQL exclusion constraints from the SQL file in a custom migration.
@@ -253,12 +253,12 @@ class AppointmentStatusHistory(models.Model):
         db_table = "appointment_status_history"
         constraints = [
             models.UniqueConstraint(fields=["appointment"], condition=Q(from_status__isnull=True), name="uq_appointment_history_one_initial"),
-            models.CheckConstraint(condition=Q(from_status__isnull=True) | Q(from_status__in=[c for c, _ in Status.choices]), name="ck_appointment_history_from_status"),
-            models.CheckConstraint(condition=Q(to_status__in=[c for c, _ in Status.choices]), name="ck_appointment_history_to_status"),
-            models.CheckConstraint(condition=Q(change_source__in=[c for c, _ in ChangeSource.choices]), name="ck_appointment_history_source"),
+            models.CheckConstraint(condition=Q(from_status__isnull=True) | Q(from_status__in=["pending", "confirmed", "checked_in", "queued", "in_service", "completed", "cancelled", "no_show", "rescheduled"]), name="ck_appointment_history_from_status"),
+            models.CheckConstraint(condition=Q(to_status__in=["pending", "confirmed", "checked_in", "queued", "in_service", "completed", "cancelled", "no_show", "rescheduled"]), name="ck_appointment_history_to_status"),
+            models.CheckConstraint(condition=Q(change_source__in=["web", "mobile", "reception", "system", "api"]), name="ck_appointment_history_source"),
             models.CheckConstraint(condition=Q(from_status__isnull=True) | ~Q(from_status=F("to_status")), name="ck_appointment_history_change"),
         ]
         indexes = [
-            models.Index(fields=["appointment", "changed_at"], name="idx_appointment_history_appointment_time"),
-            models.Index(fields=["to_status", "changed_at"], name="idx_appointment_history_status_time"),
+            models.Index(fields=["appointment", "changed_at"], name="idx_appt_hist_appt_time"),
+            models.Index(fields=["to_status", "changed_at"], name="idx_appt_hist_status_time"),
         ]

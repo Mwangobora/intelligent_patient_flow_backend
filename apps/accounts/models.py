@@ -65,7 +65,7 @@ class UserManager(BaseUserManager):
 
 
 class User(TimeStampedModel, AbstractBaseUser):
-    email = models.EmailField(null=True, blank=True)
+    email = models.EmailField(unique=True, null=True, blank=True)
     phone_number = models.CharField(
         max_length=30,
         null=True,
@@ -298,8 +298,8 @@ class RolePermission(TimeStampedModel, ActiveModel):
             )
         ]
         indexes = [
-            models.Index(fields=["role", "is_active"], name="idx_role_permissions_role_active"),
-            models.Index(fields=["permission"], name="idx_role_permissions_permission"),
+            models.Index(fields=["role", "is_active"], name="idx_role_perm_role_act"),
+            models.Index(fields=["permission"], name="idx_role_perm_perm"),
         ]
 
     def __str__(self) -> str:
@@ -353,7 +353,7 @@ class UserMembership(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["user", "is_active"], name="idx_user_memberships_user_active"),
+            models.Index(fields=["user", "is_active"], name="idx_user_memb_user_act"),
             models.Index(fields=["organization"], name="idx_user_memberships_org"),
             models.Index(fields=["facility"], name="idx_user_memberships_facility"),
         ]
@@ -396,7 +396,7 @@ class UserRoleAssignment(TimeStampedModel, ActiveModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["user", "is_active"], name="idx_user_role_assignments_user_active"),
+            models.Index(fields=["user", "is_active"], name="idx_user_role_asn_user_act"),
             models.Index(fields=["role"], name="idx_user_role_assignments_role"),
         ]
 

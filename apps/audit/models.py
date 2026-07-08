@@ -34,7 +34,7 @@ class AuditLog(CreatedAtModel):
     class Meta:
         db_table = "audit_logs"
         constraints = [
-            models.CheckConstraint(condition=Q(source__in=[c for c, _ in Source.choices]), name="ck_audit_logs_source"),
+            models.CheckConstraint(condition=Q(source__in=["web", "mobile", "api", "system", "admin"]), name="ck_audit_logs_source"),
             models.CheckConstraint(condition=Q(action__regex=r".*\S.*"), name="ck_audit_logs_action_not_blank"),
             models.CheckConstraint(condition=Q(entity_type__regex=r".*\S.*"), name="ck_audit_logs_entity_type_not_blank"),
         ]

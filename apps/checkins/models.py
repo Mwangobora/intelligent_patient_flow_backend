@@ -37,7 +37,7 @@ class PatientCheckin(TimeStampedModel):
         db_table = "patient_checkins"
         constraints = [
             models.UniqueConstraint(fields=["appointment"], condition=Q(appointment__isnull=False, voided_at__isnull=True), name="uq_patient_checkins_active_appointment"),
-            models.CheckConstraint(condition=Q(checkin_method__in=[c for c, _ in CheckinMethod.choices]), name="ck_patient_checkins_method"),
+            models.CheckConstraint(condition=Q(checkin_method__in=["reception", "mobile", "qr_code", "self_service"]), name="ck_patient_checkins_method"),
             models.CheckConstraint(condition=Q(appointment__isnull=False) | Q(facility_specialty__isnull=False), name="ck_patient_checkins_walkin_specialty"),
             models.CheckConstraint(
                 condition=((Q(voided_at__isnull=True) & Q(voided_by__isnull=True) & Q(void_reason__isnull=True))
@@ -46,8 +46,8 @@ class PatientCheckin(TimeStampedModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["facility", "checked_in_at"], name="idx_patient_checkins_facility_time"),
-            models.Index(fields=["patient", "checked_in_at"], name="idx_patient_checkins_patient_time"),
+            models.Index(fields=["facility", "checked_in_at"], name="idx_pat_checkin_fac_time"),
+            models.Index(fields=["patient", "checked_in_at"], name="idx_pat_checkin_pat_time"),
             models.Index(fields=["facility_specialty"], name="idx_patient_checkins_specialty"),
         ]
 
