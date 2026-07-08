@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     "apps.intelligence",
 ]
 
+AUTH_USER_MODEL = "accounts.User"
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
