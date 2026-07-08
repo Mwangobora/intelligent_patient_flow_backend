@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
-from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.functions import Lower
 from django.utils import timezone
 
@@ -25,14 +24,16 @@ permission_code_validator = RegexValidator(
 class UserManager(BaseUserManager):
     def create_user(
         self,
-        email: str,
+        email: str | None = None,
         password: str | None = None,
         **extra_fields,
     ) -> User:
-        if not email:
-            raise ValueError("Users must have an email address.")
+        phone_number = extra_fields.get("phone_number")
+        if not email and not phone_number:
+            raise ValueError("Users must have an email address or phone number.")
 
-        email = self.normalize_email(email).lower()
+        if email:
+            email = self.normalize_email(email).lower()
         user = self.model(
             email=email,
             **extra_fields,
@@ -65,16 +66,16 @@ class UserManager(BaseUserManager):
 
 
 class User(TimeStampedModel, AbstractBaseUser, PermissionsMixin):
-    email = models.EmailField()
+    email = models.EmailField(null=True, blank=True)
     phone_number = models.CharField(
         max_length=30,
         null=True,
         blank=True,
         validators=[phone_validator],
     )
-    first_name = models.CharField(max_length=30)
-    middle_name = models.CharField(max_length=30, null=True, blank=True)
-    last_name = models.CharField(max_length=30)
+    first_name = models.CharField(max_length=100)
+    middle_name = models.CharField(max_length=100, null=True, blank=True)
+    last_name = models.CharField(max_length=100)
     email_verified_at = models.DateTimeField(null=True, blank=True)
     phone_verified_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -92,29 +93,39 @@ class User(TimeStampedModel, AbstractBaseUser, PermissionsMixin):
         constraints = [
             models.UniqueConstraint(
                 Lower("email"),
-                name="uq_users_email_ci",
+                condition=Q(email__isnull=False),
+                name="uq_users_email",
             ),
             models.UniqueConstraint(
                 fields=["phone_number"],
                 condition=Q(phone_number__isnull=False),
-                name="uq_users_phone_number",
+                name="uq_users_phone",
             ),
-        ]
-        indexes = [
-            models.Index(fields=["email"], name="idx_users_email"),
-            models.Index(fields=["phone_number"], name="idx_users_phone_number"),
-            models.Index(fields=["is_active"], name="idx_users_is_active"),
-            models.Index(fields=["is_staff"], name="idx_users_is_staff"),
+            models.CheckConstraint(
+                condition=Q(email__isnull=False) | Q(phone_number__isnull=False),
+                name="ck_users_contact_required",
+            ),
+            models.CheckConstraint(
+                condition=Q(phone_number__isnull=True) | Q(phone_number__regex=r"^\+[1-9][0-9]{7,14}$"),
+                name="ck_users_phone_e164",
+            ),
+            models.CheckConstraint(
+                condition=Q(email_verified_at__isnull=True) | Q(email__isnull=False),
+                name="ck_users_email_verification_target",
+            ),
+            models.CheckConstraint(
+                condition=Q(phone_verified_at__isnull=True) | Q(phone_number__isnull=False),
+                name="ck_users_phone_verification_target",
+            ),
         ]
 
     def save(self, *args, **kwargs) -> None:
-        self.email = self.__class__.objects.normalize_email(self.email).lower()
-        if self.phone_number == "":
-            self.phone_number = None
+        if self.email:
+            self.email = self.__class__.objects.normalize_email(self.email).lower()
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return self.email
+        return self.email or self.phone_number or str(self.pk)
 
     def get_full_name(self) -> str:
         names = [self.first_name, self.middle_name, self.last_name]
@@ -155,47 +166,47 @@ class Role(TimeStampedModel, ActiveModel):
         ordering = ["name"]
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(code=models.functions.Upper("code")),
+                condition=Q(code=models.functions.Upper("code")),
                 name="ck_roles_code_upper",
             ),
             models.CheckConstraint(
                 condition=(
-                    (models.Q(organization__isnull=True) & models.Q(facility__isnull=True))
-                    | (models.Q(organization__isnull=False) & models.Q(facility__isnull=True))
-                    | (models.Q(organization__isnull=False) & models.Q(facility__isnull=False))
+                    (Q(organization__isnull=True) & Q(facility__isnull=True))
+                    | (Q(organization__isnull=False) & Q(facility__isnull=True))
+                    | (Q(organization__isnull=False) & Q(facility__isnull=False))
                 ),
                 name="ck_roles_scope",
             ),
             models.UniqueConstraint(
                 Lower("name"),
-                condition=models.Q(organization__isnull=True, facility__isnull=True),
+                condition=Q(organization__isnull=True, facility__isnull=True),
                 name="uq_roles_platform_name",
             ),
             models.UniqueConstraint(
                 fields=["code"],
-                condition=models.Q(organization__isnull=True, facility__isnull=True),
+                condition=Q(organization__isnull=True, facility__isnull=True),
                 name="uq_roles_platform_code",
             ),
             models.UniqueConstraint(
                 Lower("name"),
-                models.F("organization"),
-                condition=models.Q(organization__isnull=False, facility__isnull=True),
+                F("organization"),
+                condition=Q(organization__isnull=False, facility__isnull=True),
                 name="uq_roles_org_name",
             ),
             models.UniqueConstraint(
                 fields=["organization", "code"],
-                condition=models.Q(organization__isnull=False, facility__isnull=True),
+                condition=Q(organization__isnull=False, facility__isnull=True),
                 name="uq_roles_org_code",
             ),
             models.UniqueConstraint(
                 Lower("name"),
-                models.F("facility"),
-                condition=models.Q(facility__isnull=False),
+                F("facility"),
+                condition=Q(facility__isnull=False),
                 name="uq_roles_facility_name",
             ),
             models.UniqueConstraint(
                 fields=["facility", "code"],
-                condition=models.Q(facility__isnull=False),
+                condition=Q(facility__isnull=False),
                 name="uq_roles_facility_code",
             ),
         ]
@@ -204,19 +215,10 @@ class Role(TimeStampedModel, ActiveModel):
             models.Index(fields=["facility"], name="idx_roles_facility"),
         ]
 
-    def clean(self) -> None:
-        if self.facility and not self.organization:
-            raise ValidationError({"organization": "Organization is required when facility is set."})
-        if self.facility and self.organization and self.facility.organization_id != self.organization_id:
-            raise ValidationError({"facility": "Role facility must belong to the selected organization."})
-
-    def save(self, *args, **kwargs) -> None:
-        self.code = self.code.upper()
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def __str__(self) -> str:
         return self.name
+
+    # TODO: enforce the SQL trigger `trg_roles_validate_scope` in a custom migration.
 
 
 class Permission(TimeStampedModel, ActiveModel):
@@ -241,37 +243,22 @@ class Permission(TimeStampedModel, ActiveModel):
             models.UniqueConstraint(fields=["code"], name="uq_permissions_code"),
             models.UniqueConstraint(fields=["module", "action"], name="uq_permissions_module_action"),
             models.CheckConstraint(
-                condition=models.Q(code=Lower("code")),
+                condition=Q(code=Lower("code")),
                 name="ck_permissions_code_lower",
             ),
             models.CheckConstraint(
-                condition=models.Q(module=Lower("module")),
+                condition=Q(code__regex=r"^[a-z0-9_]+\.[a-z0-9_]+$"),
+                name="ck_permissions_code_format",
+            ),
+            models.CheckConstraint(
+                condition=Q(module=Lower("module")),
                 name="ck_permissions_module_lower",
             ),
             models.CheckConstraint(
-                condition=models.Q(action=Lower("action")),
+                condition=Q(action=Lower("action")),
                 name="ck_permissions_action_lower",
             ),
         ]
-
-    def clean(self) -> None:
-        normalized_code = (self.code or "").strip().lower()
-        if "." not in normalized_code:
-            raise ValidationError({"code": "Permission code must follow module.action format."})
-        module, action = normalized_code.split(".", 1)
-        if not module or not action:
-            raise ValidationError({"code": "Permission code must follow module.action format."})
-        if self.module and self.module.strip().lower() != module:
-            raise ValidationError({"module": "Module must match the code prefix."})
-        if self.action and self.action.strip().lower() != action:
-            raise ValidationError({"action": "Action must match the code suffix."})
-
-    def save(self, *args, **kwargs) -> None:
-        self.code = self.code.strip().lower()
-        self.module = self.module.strip().lower()
-        self.action = self.action.strip().lower()
-        self.full_clean()
-        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.code
@@ -345,17 +332,17 @@ class UserMembership(TimeStampedModel, ActiveModel):
         db_table = "user_memberships"
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(ends_at__isnull=True) | models.Q(ends_at__gte=models.F("starts_at")),
+                condition=Q(ends_at__isnull=True) | Q(ends_at__gte=F("starts_at")),
                 name="ck_user_memberships_dates",
             ),
             models.UniqueConstraint(
                 fields=["user", "organization"],
-                condition=models.Q(facility__isnull=True),
+                condition=Q(facility__isnull=True),
                 name="uq_user_memberships_org",
             ),
             models.UniqueConstraint(
                 fields=["user", "facility"],
-                condition=models.Q(facility__isnull=False),
+                condition=Q(facility__isnull=False),
                 name="uq_user_memberships_facility",
             ),
         ]
@@ -365,17 +352,11 @@ class UserMembership(TimeStampedModel, ActiveModel):
             models.Index(fields=["facility"], name="idx_user_memberships_facility"),
         ]
 
-    def clean(self) -> None:
-        if self.facility and self.facility.organization_id != self.organization_id:
-            raise ValidationError({"facility": "Membership facility must belong to the selected organization."})
-
-    def save(self, *args, **kwargs) -> None:
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def __str__(self) -> str:
         scope = self.facility.name if self.facility else self.organization.name
         return f"{self.user} @ {scope}"
+
+    # TODO: enforce the SQL trigger `trg_user_memberships_validate_scope` in a custom migration.
 
 
 class UserRoleAssignment(TimeStampedModel, ActiveModel):
@@ -404,7 +385,7 @@ class UserRoleAssignment(TimeStampedModel, ActiveModel):
         constraints = [
             models.UniqueConstraint(fields=["user", "role"], name="uq_user_role_assignments_pair"),
             models.CheckConstraint(
-                condition=models.Q(ends_at__isnull=True) | models.Q(ends_at__gte=models.F("starts_at")),
+                condition=Q(ends_at__isnull=True) | Q(ends_at__gte=F("starts_at")),
                 name="ck_user_role_assignments_dates",
             ),
         ]
@@ -413,41 +394,9 @@ class UserRoleAssignment(TimeStampedModel, ActiveModel):
             models.Index(fields=["role"], name="idx_user_role_assignments_role"),
         ]
 
-    def clean(self) -> None:
-        if not self.role.is_active:
-            raise ValidationError({"role": "Assigned role must be active."})
-        if self.role.organization_id is None and self.role.facility_id is None:
-            return
-
-        memberships = UserMembership.objects.filter(
-            user=self.user,
-            is_active=True,
-        )
-        if self.role.facility_id is None:
-            memberships = memberships.filter(
-                organization_id=self.role.organization_id,
-                facility__isnull=True,
-            )
-        else:
-            memberships = memberships.filter(
-                organization_id=self.role.organization_id,
-                facility_id=self.role.facility_id,
-            )
-
-        memberships = memberships.filter(starts_at__lte=self.starts_at).filter(
-            models.Q(ends_at__isnull=True)
-            | models.Q(ends_at__gte=self.ends_at or self.starts_at)
-        )
-        if not memberships.exists():
-            raise ValidationError(
-                {"user": "User requires an active membership covering the role assignment period."}
-            )
-
-    def save(self, *args, **kwargs) -> None:
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def __str__(self) -> str:
         return f"{self.user} -> {self.role}"
+
+    # TODO: enforce the SQL trigger `trg_user_role_assignments_validate` in a custom migration.
 
         
