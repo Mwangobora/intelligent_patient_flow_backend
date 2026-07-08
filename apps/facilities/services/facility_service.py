@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.facilities.models import Facility, FacilityType, Organization
 from common.exceptions import ConflictError, NotFoundError, ValidationError
@@ -13,7 +13,11 @@ PHONE_RE = re.compile(r"^\+[1-9][0-9]{7,14}$")
 
 
 def _normalize_email(email: str | None) -> str | None:
-    return email.strip().lower() if email else None
+    if email is None:
+        return None
+
+    normalized_email = email.strip().lower()
+    return normalized_email or None
 
 
 def _validate_phone_number(phone_number: str | None) -> str | None:
@@ -21,6 +25,8 @@ def _validate_phone_number(phone_number: str | None) -> str | None:
         return None
 
     normalized_phone = phone_number.strip()
+    if not normalized_phone:
+        return None
     if not PHONE_RE.fullmatch(normalized_phone):
         raise ValidationError("Phone number must be in E.164 format.")
     return normalized_phone
@@ -29,6 +35,10 @@ def _validate_phone_number(phone_number: str | None) -> str | None:
 def _validate_coordinates(latitude, longitude) -> None:
     if (latitude is None) != (longitude is None):
         raise ValidationError("Latitude and longitude must be provided together.")
+    if latitude is not None and not (-90 <= latitude <= 90):
+        raise ValidationError("Latitude must be between -90 and 90.")
+    if longitude is not None and not (-180 <= longitude <= 180):
+        raise ValidationError("Longitude must be between -180 and 180.")
 
 
 def _get_active_organization_for_update(organization_id) -> Organization:
@@ -95,43 +105,53 @@ def create_facility(
 ) -> Facility:
     if not name or not name.strip():
         raise ValidationError("Facility name is required.")
+    if not timezone_name or not timezone_name.strip():
+        raise ValidationError("Facility timezone is required.")
 
     organization = _get_active_organization_for_update(organization_id)
     facility_type = _get_active_facility_type_for_update(facility_type_id)
     _validate_coordinates(latitude, longitude)
 
     scoped_queryset = Facility.objects.filter(organization=organization)
-    normalized_code = normalize_code_value(code) if code else generate_unique_code(
-        model=Facility,
-        source_value=name,
-        queryset=scoped_queryset,
-    )
+    if code is not None:
+        normalized_code = normalize_code_value(code)
+        if not normalized_code:
+            raise ValidationError("Facility code cannot be empty.")
+    else:
+        normalized_code = generate_unique_code(
+            model=Facility,
+            source_value=name,
+            queryset=scoped_queryset,
+        )
     if scoped_queryset.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Facility code already exists in this organization.")
 
     if is_primary:
         _ensure_primary_facility_available(organization=organization)
 
-    facility = Facility.objects.create(
-        organization=organization,
-        facility_type=facility_type,
-        name=name.strip(),
-        code=normalized_code,
-        license_number=license_number.strip() if license_number else None,
-        email=_normalize_email(email),
-        phone_number=_validate_phone_number(phone_number),
-        address_line1=address_line1.strip() if address_line1 else None,
-        address_line2=address_line2.strip() if address_line2 else None,
-        country_code=country_code.strip().upper() if country_code else None,
-        region=region.strip() if region else None,
-        district=district.strip() if district else None,
-        ward=ward.strip() if ward else None,
-        postal_code=postal_code.strip() if postal_code else None,
-        latitude=latitude,
-        longitude=longitude,
-        timezone=timezone_name.strip(),
-        is_primary=is_primary,
-    )
+    try:
+        facility = Facility.objects.create(
+            organization=organization,
+            facility_type=facility_type,
+            name=name.strip(),
+            code=normalized_code,
+            license_number=license_number.strip() if license_number else None,
+            email=_normalize_email(email),
+            phone_number=_validate_phone_number(phone_number),
+            address_line1=address_line1.strip() if address_line1 else None,
+            address_line2=address_line2.strip() if address_line2 else None,
+            country_code=country_code.strip().upper() if country_code else None,
+            region=region.strip() if region else None,
+            district=district.strip() if district else None,
+            ward=ward.strip() if ward else None,
+            postal_code=postal_code.strip() if postal_code else None,
+            latitude=latitude,
+            longitude=longitude,
+            timezone=timezone_name.strip(),
+            is_primary=is_primary,
+        )
+    except IntegrityError as exc:
+        raise ConflictError("Facility could not be created because a unique value already exists.") from exc
     return facility
 
 
@@ -231,7 +251,10 @@ def update_facility(
             _ensure_primary_facility_available(organization=facility.organization, exclude_id=facility.pk)
         facility.is_primary = requested_primary
 
-    facility.save()
+    try:
+        facility.save()
+    except IntegrityError as exc:
+        raise ConflictError("Facility could not be updated because a unique value already exists.") from exc
     return facility
 
 

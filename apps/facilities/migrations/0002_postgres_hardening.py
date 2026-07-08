@@ -10,6 +10,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunSQL(
             sql="""
+            -- Extensions are shared infrastructure and may be used by other app migrations.
             CREATE EXTENSION IF NOT EXISTS pgcrypto;
             CREATE EXTENSION IF NOT EXISTS btree_gist;
 
@@ -234,9 +235,6 @@ class Migration(migrations.Migration):
             DROP FUNCTION IF EXISTS validate_operating_hours();
             DROP FUNCTION IF EXISTS validate_facility_child_scope();
             DROP FUNCTION IF EXISTS prevent_history_mutation();
-
-            DROP EXTENSION IF EXISTS btree_gist;
-            DROP EXTENSION IF EXISTS pgcrypto;
             """,
         ),
     ]

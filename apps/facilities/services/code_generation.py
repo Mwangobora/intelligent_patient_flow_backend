@@ -9,7 +9,6 @@ from common.exceptions import ValidationError
 UNSUPPORTED_CODE_CHARS_RE = re.compile(r"[^A-Z0-9_]+")
 SEPARATOR_RE = re.compile(r"[\s\-]+")
 UNDERSCORE_RE = re.compile(r"_+")
-SUFFIX_RE_TEMPLATE = r"^{prefix}(?:_(?P<suffix>\d+))?$"
 
 
 def normalize_code_value(value: str) -> str:
@@ -31,8 +30,8 @@ def generate_unique_code(
     """
     Generate a normalized unique code, using row locks to avoid duplicate suffixes.
     """
-    base_code = normalize_code_value(source_value)
-    if not base_code:
+    normalized_base = normalize_code_value(source_value)
+    if not normalized_base:
         raise ValidationError("A valid non-empty source value is required to generate a code.")
 
     if queryset is None:
@@ -41,29 +40,25 @@ def generate_unique_code(
     if max_length is None:
         max_length = model._meta.get_field(code_field).max_length
 
-    base_code = base_code[:max_length].rstrip("_")
+    base_code = normalized_base[:max_length].rstrip("_")
     if not base_code:
         raise ValidationError("The generated code is empty after normalization.")
 
-    candidate_queryset = queryset.select_for_update().filter(**{f"{code_field}__startswith": base_code})
-    existing_codes = list(candidate_queryset.values_list(code_field, flat=True))
-    if base_code not in existing_codes:
-        return base_code
-
-    suffix_pattern = re.compile(SUFFIX_RE_TEMPLATE.format(prefix=re.escape(base_code)))
-    next_suffix = 2
-    for existing_code in existing_codes:
-        match = suffix_pattern.match(existing_code)
-        if not match:
-            continue
-        suffix_value = match.group("suffix")
-        if suffix_value is not None:
-            next_suffix = max(next_suffix, int(suffix_value) + 1)
-
+    locked_queryset = queryset.select_for_update()
+    suffix = 1
     while True:
-        suffix = f"_{next_suffix}"
-        trimmed_base = base_code[: max_length - len(suffix)].rstrip("_")
-        candidate = f"{trimmed_base}{suffix}"
-        if candidate not in existing_codes:
+        if suffix == 1:
+            candidate = base_code
+        else:
+            suffix_text = f"_{suffix}"
+            trimmed_base = base_code[: max_length - len(suffix_text)].rstrip("_")
+            if not trimmed_base:
+                raise ValidationError("Unable to generate a non-empty unique code within the field length.")
+            candidate = f"{trimmed_base}{suffix_text}"
+
+        if not candidate:
+            raise ValidationError("Unable to generate a non-empty unique code.")
+
+        if not locked_queryset.filter(**{code_field: candidate}).exists():
             return candidate
-        next_suffix += 1
+        suffix += 1

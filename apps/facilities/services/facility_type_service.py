@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.facilities.models import FacilityType
 from common.exceptions import ConflictError, NotFoundError, ValidationError
@@ -15,6 +15,15 @@ def _get_facility_type_for_update(facility_type_id) -> FacilityType:
         raise NotFoundError("Facility type not found.") from exc
 
 
+def _ensure_unique_name(*, name: str, exclude_id=None) -> None:
+    queryset = FacilityType.objects.select_for_update()
+    if exclude_id is not None:
+        queryset = queryset.exclude(pk=exclude_id)
+
+    if queryset.filter(name__iexact=name).exists():
+        raise ConflictError("Facility type name already exists.")
+
+
 @transaction.atomic
 def create_facility_type(
     *,
@@ -24,19 +33,30 @@ def create_facility_type(
 ) -> FacilityType:
     if not name or not name.strip():
         raise ValidationError("Facility type name is required.")
+    cleaned_name = name.strip()
 
-    normalized_code = normalize_code_value(code) if code else generate_unique_code(
-        model=FacilityType,
-        source_value=name,
-    )
+    _ensure_unique_name(name=cleaned_name)
+
+    if code is not None:
+        normalized_code = normalize_code_value(code)
+        if not normalized_code:
+            raise ValidationError("Facility type code cannot be empty.")
+    else:
+        normalized_code = generate_unique_code(
+            model=FacilityType,
+            source_value=cleaned_name,
+        )
     if FacilityType.objects.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Facility type code already exists.")
 
-    return FacilityType.objects.create(
-        name=name.strip(),
-        description=description.strip() if description else None,
-        code=normalized_code,
-    )
+    try:
+        return FacilityType.objects.create(
+            name=cleaned_name,
+            description=description.strip() if description else None,
+            code=normalized_code,
+        )
+    except IntegrityError as exc:
+        raise ConflictError("Facility type could not be created because a unique value already exists.") from exc
 
 
 @transaction.atomic
@@ -57,7 +77,9 @@ def update_facility_type(
     if "name" in updates:
         if not updates["name"] or not updates["name"].strip():
             raise ValidationError("Facility type name is required.")
-        facility_type.name = updates["name"].strip()
+        cleaned_name = updates["name"].strip()
+        _ensure_unique_name(name=cleaned_name, exclude_id=facility_type.pk)
+        facility_type.name = cleaned_name
 
     if "description" in updates:
         facility_type.description = updates["description"].strip() if updates["description"] else None
@@ -76,7 +98,10 @@ def update_facility_type(
             raise ConflictError("Facility type code already exists.")
         facility_type.code = normalized_code
 
-    facility_type.save()
+    try:
+        facility_type.save()
+    except IntegrityError as exc:
+        raise ConflictError("Facility type could not be updated because a unique value already exists.") from exc
     return facility_type
 
 

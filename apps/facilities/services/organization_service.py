@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from apps.facilities.models import Organization
 from common.exceptions import ConflictError, NotFoundError, ValidationError
@@ -13,7 +13,11 @@ PHONE_RE = re.compile(r"^\+[1-9][0-9]{7,14}$")
 
 
 def _normalize_email(email: str | None) -> str | None:
-    return email.strip().lower() if email else None
+    if email is None:
+        return None
+
+    normalized_email = email.strip().lower()
+    return normalized_email or None
 
 
 def _validate_phone_number(phone_number: str | None) -> str | None:
@@ -21,6 +25,8 @@ def _validate_phone_number(phone_number: str | None) -> str | None:
         return None
 
     normalized_phone = phone_number.strip()
+    if not normalized_phone:
+        return None
     if not PHONE_RE.fullmatch(normalized_phone):
         raise ValidationError("Phone number must be in E.164 format.")
     return normalized_phone
@@ -46,21 +52,29 @@ def create_organization(
     if not name or not name.strip():
         raise ValidationError("Organization name is required.")
 
-    normalized_code = normalize_code_value(code) if code else generate_unique_code(
-        model=Organization,
-        source_value=name,
-    )
+    if code is not None:
+        normalized_code = normalize_code_value(code)
+        if not normalized_code:
+            raise ValidationError("Organization code cannot be empty.")
+    else:
+        normalized_code = generate_unique_code(
+            model=Organization,
+            source_value=name,
+        )
     if Organization.objects.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Organization code already exists.")
 
-    organization = Organization.objects.create(
-        name=name.strip(),
-        legal_name=legal_name.strip() if legal_name else None,
-        email=_normalize_email(email),
-        phone_number=_validate_phone_number(phone_number),
-        registration_number=registration_number.strip() if registration_number else None,
-        code=normalized_code,
-    )
+    try:
+        organization = Organization.objects.create(
+            name=name.strip(),
+            legal_name=legal_name.strip() if legal_name else None,
+            email=_normalize_email(email),
+            phone_number=_validate_phone_number(phone_number),
+            registration_number=registration_number.strip() if registration_number else None,
+            code=normalized_code,
+        )
+    except IntegrityError as exc:
+        raise ConflictError("Organization could not be created because a unique value already exists.") from exc
     return organization
 
 
@@ -110,7 +124,10 @@ def update_organization(
             raise ConflictError("Organization code already exists.")
         organization.code = normalized_code
 
-    organization.save()
+    try:
+        organization.save()
+    except IntegrityError as exc:
+        raise ConflictError("Organization could not be updated because a unique value already exists.") from exc
     return organization
 
 
