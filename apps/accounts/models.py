@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
-from django.contrib.auth.models import PermissionsMixin
 from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import F, Q
@@ -65,7 +64,7 @@ class UserManager(BaseUserManager):
         )
 
 
-class User(TimeStampedModel, AbstractBaseUser, PermissionsMixin):
+class User(TimeStampedModel, AbstractBaseUser):
     email = models.EmailField(null=True, blank=True)
     phone_number = models.CharField(
         max_length=30,
@@ -80,6 +79,7 @@ class User(TimeStampedModel, AbstractBaseUser, PermissionsMixin):
     phone_verified_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    is_superuser = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 
     objects = UserManager()
@@ -134,6 +134,12 @@ class User(TimeStampedModel, AbstractBaseUser, PermissionsMixin):
     def get_short_name(self) -> str:
         return self.first_name
 
+    def has_perm(self, perm: str, obj=None) -> bool:
+        return bool(self.is_active and (self.is_superuser or self.is_staff))
+
+    def has_module_perms(self, app_label: str) -> bool:
+        return bool(self.is_active and (self.is_superuser or self.is_staff))
+
 
 class Role(TimeStampedModel, ActiveModel):
     organization = models.ForeignKey(
@@ -152,7 +158,7 @@ class Role(TimeStampedModel, ActiveModel):
     )
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=80)
-    description = models.TextField(blank=True)
+    description = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -226,7 +232,7 @@ class Permission(TimeStampedModel, ActiveModel):
     code = models.CharField(max_length=120, validators=[permission_code_validator])
     module = models.CharField(max_length=60)
     action = models.CharField(max_length=60)
-    description = models.TextField(blank=True)
+    description = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

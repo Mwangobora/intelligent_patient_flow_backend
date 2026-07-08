@@ -16,7 +16,7 @@ phone_validator = RegexValidator(
 
 class Organization(TimeStampedModel, ActiveModel):
     name = models.CharField(max_length=150)
-    legal_name = models.CharField(max_length=200, blank=True)
+    legal_name = models.CharField(max_length=200, null=True, blank=True)
     code = models.CharField(max_length=30)
     email = models.EmailField(blank=True, null=True)
     phone_number = models.CharField(
@@ -25,7 +25,7 @@ class Organization(TimeStampedModel, ActiveModel):
         null=True,
         validators=[phone_validator],
     )
-    registration_number = models.CharField(max_length=100, blank=True)
+    registration_number = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         db_table = "organizations"
@@ -41,12 +41,6 @@ class Organization(TimeStampedModel, ActiveModel):
             models.Index(fields=["code"], name="idx_organizations_code"),
         ]
 
-    def save(self, *args, **kwargs) -> None:
-        self.code = self.code.upper()
-        if self.legal_name == "":
-            self.legal_name = ""
-        super().save(*args, **kwargs)
-
     def __str__(self) -> str:
         return f"{self.name} ({self.code})"
 
@@ -54,7 +48,7 @@ class Organization(TimeStampedModel, ActiveModel):
 class FacilityType(TimeStampedModel, ActiveModel):
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=30)
-    description = models.TextField(blank=True)
+    description = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = "facility_types"
@@ -67,10 +61,6 @@ class FacilityType(TimeStampedModel, ActiveModel):
                 name="ck_facility_types_code_upper",
             ),
         ]
-
-    def save(self, *args, **kwargs) -> None:
-        self.code = self.code.upper()
-        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return self.name
@@ -89,7 +79,7 @@ class Facility(TimeStampedModel, ActiveModel):
     )
     name = models.CharField(max_length=150)
     code = models.CharField(max_length=30)
-    license_number = models.CharField(max_length=100, blank=True)
+    license_number = models.CharField(max_length=100, null=True, blank=True)
     email = models.EmailField(blank=True, null=True)
     phone_number = models.CharField(
         max_length=30,
@@ -97,13 +87,13 @@ class Facility(TimeStampedModel, ActiveModel):
         null=True,
         validators=[phone_validator],
     )
-    address_line1 = models.CharField(max_length=200, blank=True)
-    address_line2 = models.CharField(max_length=200, blank=True)
-    country_code = models.CharField(max_length=2, blank=True)
-    region = models.CharField(max_length=100, blank=True)
-    district = models.CharField(max_length=100, blank=True)
-    ward = models.CharField(max_length=100, blank=True)
-    postal_code = models.CharField(max_length=20, blank=True)
+    address_line1 = models.CharField(max_length=200, null=True, blank=True)
+    address_line2 = models.CharField(max_length=200, null=True, blank=True)
+    country_code = models.CharField(max_length=2, null=True, blank=True)
+    region = models.CharField(max_length=100, null=True, blank=True)
+    district = models.CharField(max_length=100, null=True, blank=True)
+    ward = models.CharField(max_length=100, null=True, blank=True)
+    postal_code = models.CharField(max_length=20, null=True, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     timezone = models.CharField(max_length=64, default="Africa/Dar_es_Salaam")
@@ -123,7 +113,8 @@ class Facility(TimeStampedModel, ActiveModel):
             ),
             models.CheckConstraint(
                 condition=(
-                    models.Q(country_code="") | models.Q(country_code=models.functions.Upper("country_code"))
+                    models.Q(country_code__isnull=True)
+                    | models.Q(country_code=models.functions.Upper("country_code"))
                 ),
                 name="ck_facilities_country_upper",
             ),
@@ -148,12 +139,6 @@ class Facility(TimeStampedModel, ActiveModel):
             models.Index(fields=["facility_type"], name="idx_facilities_type"),
             models.Index(fields=["is_active"], name="idx_facilities_active"),
         ]
-
-    def save(self, *args, **kwargs) -> None:
-        self.code = self.code.upper()
-        if self.country_code:
-            self.country_code = self.country_code.upper()
-        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.name} ({self.code})"
