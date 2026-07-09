@@ -23,7 +23,6 @@ def _get_credential_for_update(credential_id) -> PractitionerCredential:
             "practitioner",
             "practitioner__organization",
             "credential_type",
-            "verified_by",
         ).get(pk=credential_id)
     except PractitionerCredential.DoesNotExist as exc:
         raise NotFoundError("Practitioner credential not found.") from exc

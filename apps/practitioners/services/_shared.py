@@ -141,9 +141,11 @@ def get_facility_specialty(
     active_only: bool = False,
     for_update: bool = False,
 ) -> FacilitySpecialty:
-    queryset = FacilitySpecialty.objects.select_related("facility", "department", "specialty")
+    queryset = FacilitySpecialty.objects.select_related("facility", "specialty")
     if for_update:
         queryset = queryset.select_for_update()
+    else:
+        queryset = queryset.select_related("department")
     try:
         facility_specialty = queryset.get(pk=facility_specialty_id)
     except FacilitySpecialty.DoesNotExist as exc:
