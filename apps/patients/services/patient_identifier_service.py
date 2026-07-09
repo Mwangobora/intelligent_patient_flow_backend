@@ -119,7 +119,7 @@ def verify_patient_identifier(
     if identifier.verified_at is not None and identifier.verified_by_id is not None:
         return identifier
 
-    identifier.verified_by = get_user(verified_by_id, field_label="Verifying user")
+    identifier.verified_by = get_user(verified_by_id, field_label="Verifying user", active_only=True)
     identifier.verified_at = verified_at or timezone.now()
     identifier.save(update_fields=["verified_at", "verified_by", "updated_at"])
     return identifier

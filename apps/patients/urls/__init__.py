@@ -1,1 +1,38 @@
+from django.urls import include, path
+from rest_framework_nested.routers import NestedSimpleRouter, SimpleRouter
 
+from apps.patients.views import (
+    PatientAccessGrantViewSet,
+    PatientAddressViewSet,
+    PatientIdentifierTypeViewSet,
+    PatientIdentifierViewSet,
+    PatientRelatedPersonViewSet,
+    PatientViewSet,
+    RelatedPersonContactViewSet,
+    RelationshipTypeViewSet,
+)
+
+router = SimpleRouter()
+router.register(r"patients/identifier-types", PatientIdentifierTypeViewSet, basename="patients-identifier-types")
+router.register(r"patients/identifiers", PatientIdentifierViewSet, basename="patients-identifiers")
+router.register(r"patients/addresses", PatientAddressViewSet, basename="patients-addresses")
+router.register(r"patients/relationship-types", RelationshipTypeViewSet, basename="patients-relationship-types")
+router.register(r"patients/related-persons", PatientRelatedPersonViewSet, basename="patients-related-persons")
+router.register(r"patients/related-person-contacts", RelatedPersonContactViewSet, basename="patients-related-person-contacts")
+router.register(r"patients/access-grants", PatientAccessGrantViewSet, basename="patients-access-grants")
+router.register(r"patients", PatientViewSet, basename="patients")
+
+patient_router = NestedSimpleRouter(router, r"patients", lookup="patient")
+patient_router.register(r"identifiers", PatientIdentifierViewSet, basename="patients-patient-identifiers")
+patient_router.register(r"addresses", PatientAddressViewSet, basename="patients-patient-addresses")
+patient_router.register(r"related-persons", PatientRelatedPersonViewSet, basename="patients-patient-related-persons")
+patient_router.register(r"access-grants", PatientAccessGrantViewSet, basename="patients-patient-access-grants")
+
+related_person_router = NestedSimpleRouter(router, r"patients/related-persons", lookup="related_person")
+related_person_router.register(r"contacts", RelatedPersonContactViewSet, basename="patients-related-person-contacts-nested")
+
+urlpatterns = [
+    path("", include(router.urls)),
+    path("", include(patient_router.urls)),
+    path("", include(related_person_router.urls)),
+]

@@ -136,6 +136,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Facility Management APIs",
             "description": "Organizations, facilities, departments, specialties, service points, schedules, and flow settings.",
         },
+        {
+            "name": "Patient Management APIs",
+            "description": "Patient registration, identifiers, addresses, related persons, contacts, and access grants.",
+        },
     ],
 }
 

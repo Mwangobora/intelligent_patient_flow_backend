@@ -14,14 +14,10 @@ def _get_grant_for_update(grant_id) -> PatientAccessGrant:
         return PatientAccessGrant.objects.select_for_update().select_related(
             "patient",
             "patient__organization",
-            "patient__user",
             "related_person",
             "related_person__patient",
-            "related_person__linked_user",
             "grantee_user",
             "role",
-            "role__organization",
-            "role__facility",
         ).get(pk=grant_id)
     except PatientAccessGrant.DoesNotExist as exc:
         raise NotFoundError("Patient access grant not found.") from exc
@@ -88,8 +84,16 @@ def grant_patient_access(
     related_person = get_related_person(related_person_id, active_only=True, for_update=True)
     grantee_user = get_user(grantee_user_id, field_label="Grantee user", active_only=True, for_update=True)
     role = get_role(role_id, active_only=True, for_update=True)
-    granted_by = get_user(granted_by_id, field_label="Granting user") if granted_by_id is not None else None
-    created_by = get_user(created_by_id, field_label="Creator user") if created_by_id is not None else None
+    granted_by = (
+        get_user(granted_by_id, field_label="Granting user", active_only=True)
+        if granted_by_id is not None
+        else None
+    )
+    created_by = (
+        get_user(created_by_id, field_label="Creator user", active_only=True)
+        if created_by_id is not None
+        else None
+    )
     resolved_starts_at, resolved_ends_at = _resolve_grant_dates(starts_at=starts_at, ends_at=ends_at)
 
     _validate_patient_access_scope(
@@ -131,7 +135,7 @@ def revoke_patient_access(
     if grant.revoked_at is not None and grant.revoked_by_id is not None and grant.revocation_reason is not None:
         return grant
 
-    grant.revoked_by = get_user(revoked_by_id, field_label="Revoking user")
+    grant.revoked_by = get_user(revoked_by_id, field_label="Revoking user", active_only=True)
     grant.revoked_at = revoked_at or timezone.now()
     grant.revocation_reason = normalized_reason
     grant.is_active = False
@@ -167,7 +171,11 @@ def reactivate_patient_access_grant(
 
     grant.starts_at = resolved_starts_at
     grant.ends_at = resolved_ends_at
-    grant.granted_by = get_user(granted_by_id, field_label="Granting user") if granted_by_id is not None else grant.granted_by
+    grant.granted_by = (
+        get_user(granted_by_id, field_label="Granting user", active_only=True)
+        if granted_by_id is not None
+        else grant.granted_by
+    )
     grant.revoked_at = None
     grant.revoked_by = None
     grant.revocation_reason = None

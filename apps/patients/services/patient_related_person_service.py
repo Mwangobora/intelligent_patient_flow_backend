@@ -17,9 +17,7 @@ def _get_related_person_for_update(related_person_id) -> PatientRelatedPerson:
     try:
         return PatientRelatedPerson.objects.select_for_update().select_related(
             "patient",
-            "patient__user",
             "relationship_type",
-            "linked_user",
         ).get(pk=related_person_id)
     except PatientRelatedPerson.DoesNotExist as exc:
         raise NotFoundError("Patient related person not found.") from exc

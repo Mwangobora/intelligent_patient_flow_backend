@@ -107,7 +107,7 @@ def verify_related_person_contact(
     if contact.verified_at is not None and contact.verified_by_id is not None:
         return contact
 
-    contact.verified_by = get_user(verified_by_id, field_label="Verifying user")
+    contact.verified_by = get_user(verified_by_id, field_label="Verifying user", active_only=True)
     contact.verified_at = verified_at or timezone.now()
     contact.save(update_fields=["verified_at", "verified_by", "updated_at"])
     return contact

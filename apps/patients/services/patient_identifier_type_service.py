@@ -11,7 +11,7 @@ from ._shared import get_organization, get_user, normalize_optional_text
 
 def _get_identifier_type_for_update(identifier_type_id) -> PatientIdentifierType:
     try:
-        return PatientIdentifierType.objects.select_for_update().select_related("organization").get(pk=identifier_type_id)
+        return PatientIdentifierType.objects.select_for_update().get(pk=identifier_type_id)
     except PatientIdentifierType.DoesNotExist as exc:
         raise NotFoundError("Patient identifier type not found.") from exc
 

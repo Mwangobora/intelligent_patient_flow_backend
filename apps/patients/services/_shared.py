@@ -8,6 +8,7 @@ from apps.patients.models import Patient, PatientIdentifierType, PatientRelatedP
 from common.exceptions import NotFoundError, ValidationError
 
 PHONE_RE = re.compile(r"^\+[1-9][0-9]{7,14}$")
+PHONE_SEPARATORS_RE = re.compile(r"[\s\-\(\)]+")
 
 
 def normalize_optional_text(value: str | None) -> str | None:
@@ -29,6 +30,7 @@ def validate_phone_number(phone_number: str | None) -> str | None:
     normalized_phone = normalize_optional_text(phone_number)
     if normalized_phone is None:
         return None
+    normalized_phone = PHONE_SEPARATORS_RE.sub("", normalized_phone)
     if not PHONE_RE.fullmatch(normalized_phone):
         raise ValidationError("Phone number must be in E.164 format.")
     return normalized_phone
@@ -120,9 +122,10 @@ def get_patient(
     active_only: bool = False,
     for_update: bool = False,
 ) -> Patient:
-    queryset = Patient.objects.select_related("organization", "registered_facility", "user")
     if for_update:
-        queryset = queryset.select_for_update()
+        queryset = Patient.objects.select_related("organization").select_for_update()
+    else:
+        queryset = Patient.objects.select_related("organization", "registered_facility", "user")
 
     try:
         patient = queryset.get(pk=patient_id)
@@ -141,9 +144,10 @@ def get_patient_identifier_type(
     active_only: bool = False,
     for_update: bool = False,
 ) -> PatientIdentifierType:
-    queryset = PatientIdentifierType.objects.select_related("organization")
     if for_update:
-        queryset = queryset.select_for_update()
+        queryset = PatientIdentifierType.objects.select_for_update()
+    else:
+        queryset = PatientIdentifierType.objects.select_related("organization")
 
     try:
         identifier_type = queryset.get(pk=identifier_type_id)
@@ -183,15 +187,20 @@ def get_related_person(
     active_only: bool = False,
     for_update: bool = False,
 ) -> PatientRelatedPerson:
-    queryset = PatientRelatedPerson.objects.select_related(
-        "patient",
-        "patient__organization",
-        "patient__user",
-        "linked_user",
-        "relationship_type",
-    )
     if for_update:
-        queryset = queryset.select_for_update()
+        queryset = PatientRelatedPerson.objects.select_related(
+            "patient",
+            "patient__organization",
+            "relationship_type",
+        ).select_for_update()
+    else:
+        queryset = PatientRelatedPerson.objects.select_related(
+            "patient",
+            "patient__organization",
+            "patient__user",
+            "linked_user",
+            "relationship_type",
+        )
 
     try:
         related_person = queryset.get(pk=related_person_id)
@@ -210,9 +219,10 @@ def get_role(
     active_only: bool = False,
     for_update: bool = False,
 ) -> Role:
-    queryset = Role.objects.select_related("organization", "facility")
     if for_update:
-        queryset = queryset.select_for_update()
+        queryset = Role.objects.select_for_update()
+    else:
+        queryset = Role.objects.select_related("organization", "facility")
 
     try:
         role = queryset.get(pk=role_id)
