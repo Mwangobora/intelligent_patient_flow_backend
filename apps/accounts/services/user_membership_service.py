@@ -50,11 +50,7 @@ def _get_facility(facility_id) -> Facility:
 
 def _get_membership_for_update(membership_id) -> UserMembership:
     try:
-        return UserMembership.objects.select_for_update().select_related(
-            "user",
-            "organization",
-            "facility",
-        ).get(pk=membership_id)
+        return UserMembership.objects.select_for_update().get(pk=membership_id)
     except UserMembership.DoesNotExist as exc:
         raise NotFoundError("User membership not found.") from exc
 
