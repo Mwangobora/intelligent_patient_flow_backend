@@ -7,9 +7,11 @@ from .role_permission_service import (
 from .role_service import create_role, deactivate_role, update_role
 from .user_service import (
     activate_user,
+    change_user_password,
     create_superuser_user,
     create_user,
     deactivate_user,
+    update_user,
     verify_email,
     verify_phone,
 )
@@ -29,6 +31,7 @@ from .user_role_assignment_service import (
 __all__ = [
     "activate_user",
     "assign_role_to_user",
+    "change_user_password",
     "create_facility_membership",
     "create_organization_membership",
     "create_permission",
@@ -48,6 +51,7 @@ __all__ = [
     "revoke_role_from_user",
     "update_permission",
     "update_role",
+    "update_user",
     "verify_email",
     "verify_phone",
 ]

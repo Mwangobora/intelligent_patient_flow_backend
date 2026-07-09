@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 
-from django.db import transaction
+from django.contrib.auth.password_validation import validate_password
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
@@ -12,7 +13,11 @@ PHONE_RE = re.compile(r"^\+[1-9][0-9]{7,14}$")
 
 
 def _normalize_email(email: str | None) -> str | None:
-    return email.strip().lower() if email else None
+    if email is None:
+        return None
+
+    normalized_email = email.strip().lower()
+    return normalized_email or None
 
 
 def _validate_phone_number(phone_number: str | None) -> str | None:
@@ -20,6 +25,8 @@ def _validate_phone_number(phone_number: str | None) -> str | None:
         return None
 
     normalized_phone = phone_number.strip()
+    if not normalized_phone:
+        return None
     if not PHONE_RE.fullmatch(normalized_phone):
         raise ValidationError("Phone number must be in E.164 format.")
     return normalized_phone
@@ -69,16 +76,19 @@ def create_user(
     normalized_email, normalized_phone = _ensure_contact(email, phone_number)
     _ensure_unique_contact(email=normalized_email, phone_number=normalized_phone)
 
-    return User.objects.create_user(
-        email=normalized_email,
-        phone_number=normalized_phone,
-        password=password,
-        first_name=first_name.strip(),
-        middle_name=middle_name.strip() if middle_name else None,
-        last_name=last_name.strip(),
-        is_staff=False,
-        is_superuser=False,
-    )
+    try:
+        return User.objects.create_user(
+            email=normalized_email,
+            phone_number=normalized_phone,
+            password=password,
+            first_name=first_name.strip(),
+            middle_name=middle_name.strip() if middle_name else None,
+            last_name=last_name.strip(),
+            is_staff=False,
+            is_superuser=False,
+        )
+    except IntegrityError as exc:
+        raise ConflictError("User could not be created because a unique value already exists.") from exc
 
 
 @transaction.atomic
@@ -99,14 +109,91 @@ def create_superuser_user(
         raise ValidationError("Superuser creation requires an email address.")
 
     _ensure_unique_contact(email=normalized_email, phone_number=normalized_phone)
-    return User.objects.create_superuser(
-        email=normalized_email,
-        password=password,
-        first_name=first_name.strip(),
-        middle_name=middle_name.strip() if middle_name else None,
-        last_name=last_name.strip(),
-        phone_number=normalized_phone,
-    )
+    try:
+        return User.objects.create_superuser(
+            email=normalized_email,
+            password=password,
+            first_name=first_name.strip(),
+            middle_name=middle_name.strip() if middle_name else None,
+            last_name=last_name.strip(),
+            phone_number=normalized_phone,
+        )
+    except IntegrityError as exc:
+        raise ConflictError("Superuser could not be created because a unique value already exists.") from exc
+
+
+@transaction.atomic
+def update_user(
+    *,
+    user_id,
+    **updates,
+) -> User:
+    user = _get_user_for_update(user_id)
+
+    allowed_fields = {"email", "phone_number", "first_name", "middle_name", "last_name"}
+    unexpected_fields = set(updates) - allowed_fields
+    if unexpected_fields:
+        unexpected = ", ".join(sorted(unexpected_fields))
+        raise ValidationError(f"Unsupported user update fields: {unexpected}.")
+
+    next_email = user.email
+    if "email" in updates:
+        next_email = _normalize_email(updates["email"])
+
+    next_phone_number = user.phone_number
+    if "phone_number" in updates:
+        next_phone_number = _validate_phone_number(updates["phone_number"])
+
+    if "first_name" in updates:
+        if not updates["first_name"] or not updates["first_name"].strip():
+            raise ValidationError("First name is required.")
+        user.first_name = updates["first_name"].strip()
+
+    if "middle_name" in updates:
+        user.middle_name = updates["middle_name"].strip() if updates["middle_name"] else None
+
+    if "last_name" in updates:
+        if not updates["last_name"] or not updates["last_name"].strip():
+            raise ValidationError("Last name is required.")
+        user.last_name = updates["last_name"].strip()
+
+    if not next_email and not next_phone_number:
+        raise ValidationError("At least one of email or phone_number is required.")
+
+    _ensure_unique_contact(email=next_email, phone_number=next_phone_number, exclude_id=user.pk)
+    user.email = next_email
+    user.phone_number = next_phone_number
+
+    try:
+        user.save()
+    except IntegrityError as exc:
+        raise ConflictError("User could not be updated because a unique value already exists.") from exc
+    return user
+
+
+@transaction.atomic
+def change_user_password(
+    *,
+    user_id,
+    old_password: str,
+    new_password: str,
+) -> User:
+    user = _get_user_for_update(user_id)
+    if not old_password:
+        raise ValidationError("Old password is required.")
+    if not new_password:
+        raise ValidationError("New password is required.")
+    if not user.check_password(old_password):
+        raise ValidationError("Old password is incorrect.")
+
+    try:
+        validate_password(new_password, user=user)
+    except Exception as exc:
+        raise ValidationError(str(exc)) from exc
+
+    user.set_password(new_password)
+    user.save(update_fields=["password", "updated_at"])
+    return user
 
 
 @transaction.atomic

@@ -59,7 +59,7 @@ def _generate_unique_role_code(
 
 def _get_role_for_update(role_id) -> Role:
     try:
-        return Role.objects.select_for_update().select_related("organization", "facility").get(pk=role_id)
+        return Role.objects.select_for_update().get(pk=role_id)
     except Role.DoesNotExist as exc:
         raise NotFoundError("Role not found.") from exc
 

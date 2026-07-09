@@ -21,7 +21,7 @@ def _get_active_user(user_id) -> User:
 
 def _get_active_role(role_id) -> Role:
     try:
-        role = Role.objects.select_for_update().select_related("organization", "facility").get(pk=role_id)
+        role = Role.objects.select_for_update().get(pk=role_id)
     except Role.DoesNotExist as exc:
         raise NotFoundError("Role not found.") from exc
 
