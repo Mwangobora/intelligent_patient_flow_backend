@@ -14,6 +14,7 @@ urlpatterns = [
     path("api/v1/", include("apps.accounts.urls")),
     path("api/v1/", include("apps.facilities.urls")),
     path("api/v1/", include("apps.patients.urls")),
+    path("api/v1/", include("apps.practitioners.urls")),
     path("health/live/", LiveHealthCheckView.as_view(), name="health-live"),
     path("health/ready/", ReadyHealthCheckView.as_view(), name="health-ready"),
 ]

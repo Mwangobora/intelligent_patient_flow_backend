@@ -140,6 +140,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Patient Management APIs",
             "description": "Patient registration, identifiers, addresses, related persons, contacts, and access grants.",
         },
+        {
+            "name": "Practitioner Management APIs",
+            "description": "Practitioner registration, assignments, credential types, and credential verification workflows.",
+        },
     ],
 }
 
