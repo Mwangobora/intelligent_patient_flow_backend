@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
@@ -21,6 +22,7 @@ from apps.accounts.services import change_user_password, update_user
 from ._helpers import translate_domain_error
 
 
+@extend_schema(tags=["Auth APIs"])
 class AuthViewSet(viewsets.GenericViewSet):
     serializer_class = UserSummarySerializer
 

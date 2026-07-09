@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -19,8 +20,10 @@ from apps.accounts.services import activate_user, create_user, deactivate_user, 
 from ._helpers import translate_domain_error
 
 
+@extend_schema(tags=["User Management APIs"])
 class UserViewSet(viewsets.GenericViewSet):
     lookup_url_kwarg = "pk"
+    serializer_class = UserDetailSerializer
 
     def get_permissions(self):
         permission_map = {
@@ -102,7 +105,10 @@ class UserViewSet(viewsets.GenericViewSet):
         return Response(UserDetailSerializer(user).data)
 
 
+@extend_schema(tags=["User Management APIs"])
 class UserMembershipReadOnlyViewSet(viewsets.ViewSet):
+    serializer_class = MembershipSummarySerializer
+
     def get_permissions(self):
         self.required_permission = "accounts_user.view"
         return [HasSystemPermission()]
@@ -117,7 +123,10 @@ class UserMembershipReadOnlyViewSet(viewsets.ViewSet):
         return Response(MembershipSummarySerializer(memberships, many=True).data)
 
 
+@extend_schema(tags=["User Management APIs"])
 class UserRoleAssignmentReadOnlyViewSet(viewsets.ViewSet):
+    serializer_class = RoleAssignmentSummarySerializer
+
     def get_permissions(self):
         self.required_permission = "accounts_user.view"
         return [HasSystemPermission()]

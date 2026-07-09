@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -17,6 +18,7 @@ from apps.accounts.services import create_permission, deactivate_permission, upd
 from ._helpers import translate_domain_error
 
 
+@extend_schema(tags=["Authorization APIs"])
 class PermissionViewSet(viewsets.GenericViewSet):
     lookup_url_kwarg = "pk"
 

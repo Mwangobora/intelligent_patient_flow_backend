@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -40,8 +41,10 @@ from apps.accounts.services import (
 from ._helpers import translate_domain_error
 
 
+@extend_schema(tags=["Authorization APIs"])
 class RoleViewSet(viewsets.GenericViewSet):
     lookup_url_kwarg = "pk"
+    serializer_class = RoleDetailSerializer
 
     def get_permissions(self):
         permission_map = {
@@ -151,7 +154,10 @@ class RoleViewSet(viewsets.GenericViewSet):
         )
 
 
+@extend_schema(tags=["Authorization APIs"])
 class MembershipViewSet(viewsets.GenericViewSet):
+    serializer_class = MembershipSummarySerializer
+
     def get_permissions(self):
         permission_map = {
             "organization": "accounts_membership.create",
@@ -221,7 +227,10 @@ class MembershipViewSet(viewsets.GenericViewSet):
         return Response(MembershipSummarySerializer(membership).data)
 
 
+@extend_schema(tags=["Authorization APIs"])
 class RoleAssignmentViewSet(viewsets.GenericViewSet):
+    serializer_class = RoleAssignmentSummarySerializer
+
     def get_permissions(self):
         permission_map = {
             "create": "accounts_role_assignment.create",

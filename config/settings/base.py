@@ -119,6 +119,24 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Infrastructure and documentation foundation for the backend project.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "TAGS": [
+        {
+            "name": "Auth APIs",
+            "description": "Authentication, token lifecycle, and self-service account actions.",
+        },
+        {
+            "name": "User Management APIs",
+            "description": "Administrative user management and user-scoped membership or role reads.",
+        },
+        {
+            "name": "Authorization APIs",
+            "description": "Roles, permissions, memberships, and role assignment management endpoints.",
+        },
+        {
+            "name": "Facility Management APIs",
+            "description": "Organizations, facilities, departments, specialties, service points, schedules, and flow settings.",
+        },
+    ],
 }
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
