@@ -148,6 +148,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Scheduling Management APIs",
             "description": "Practitioner availability, leave, shifts, appointment slots, appointments, and status history workflows.",
         },
+        {
+            "name": "Check-in Management APIs",
+            "description": "Patient arrivals, appointment check-ins, walk-in check-ins, QR token issuance, and token consumption workflows.",
+        },
     ],
 }
 
