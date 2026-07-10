@@ -156,6 +156,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Queueing Management APIs",
             "description": "Queue lifecycle, queue entries, patient calling, service progress, transfers, and append-only queue events.",
         },
+        {
+            "name": "Intelligence APIs",
+            "description": "Rule-based wait predictions, statistical arrival forecasts, slot suggestions, and prediction evaluation.",
+        },
     ],
 }
 
