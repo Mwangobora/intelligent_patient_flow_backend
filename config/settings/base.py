@@ -152,6 +152,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Check-in Management APIs",
             "description": "Patient arrivals, appointment check-ins, walk-in check-ins, QR token issuance, and token consumption workflows.",
         },
+        {
+            "name": "Queueing Management APIs",
+            "description": "Queue lifecycle, queue entries, patient calling, service progress, transfers, and append-only queue events.",
+        },
     ],
 }
 
