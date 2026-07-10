@@ -144,6 +144,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Practitioner Management APIs",
             "description": "Practitioner registration, assignments, credential types, and credential verification workflows.",
         },
+        {
+            "name": "Scheduling Management APIs",
+            "description": "Practitioner availability, leave, shifts, appointment slots, appointments, and status history workflows.",
+        },
     ],
 }
 
