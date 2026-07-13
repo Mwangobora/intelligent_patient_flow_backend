@@ -168,6 +168,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Reporting APIs",
             "description": "Private report exports, secure downloads, and analytics previews.",
         },
+        {
+            "name": "Audit APIs",
+            "description": "Append-only audit logs, secure metadata, resource history, actor history, and audit summaries.",
+        },
     ],
 }
 
