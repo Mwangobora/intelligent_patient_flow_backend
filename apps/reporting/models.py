@@ -13,6 +13,7 @@ class ReportExport(TimeStampedModel):
         CSV = "csv", "CSV"
         XLSX = "xlsx", "XLSX"
         PDF = "pdf", "PDF"
+        DOCX = "docx", "DOCX"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -39,7 +40,7 @@ class ReportExport(TimeStampedModel):
     class Meta:
         db_table = "report_exports"
         constraints = [
-            models.CheckConstraint(condition=Q(export_format__in=["csv", "xlsx", "pdf"]), name="ck_report_exports_format"),
+            models.CheckConstraint(condition=Q(export_format__in=["csv", "xlsx", "pdf", "docx"]), name="ck_report_exports_format"),
             models.CheckConstraint(condition=Q(status__in=["pending", "processing", "completed", "failed", "expired", "cancelled"]), name="ck_report_exports_status"),
             models.CheckConstraint(condition=Q(row_count__isnull=True) | Q(row_count__gte=0), name="ck_report_exports_row_count"),
             models.CheckConstraint(condition=~Q(status="completed") | (Q(storage_key__isnull=False) & Q(generated_at__isnull=False)), name="ck_report_exports_completion"),

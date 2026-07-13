@@ -164,6 +164,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Notification Management APIs",
             "description": "Patient notifications, delivery workflows, factory actions, and push device registration.",
         },
+        {
+            "name": "Reporting APIs",
+            "description": "Private report exports, secure downloads, and analytics previews.",
+        },
     ],
 }
 

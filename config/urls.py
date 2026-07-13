@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/v1/", include("apps.queueing.urls")),
     path("api/v1/", include("apps.intelligence.urls")),
     path("api/v1/", include("apps.notifications.urls")),
+    path("api/v1/", include("apps.reporting.urls")),
     path("health/live/", LiveHealthCheckView.as_view(), name="health-live"),
     path("health/ready/", ReadyHealthCheckView.as_view(), name="health-ready"),
 ]
