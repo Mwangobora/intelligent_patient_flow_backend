@@ -160,6 +160,10 @@ SPECTACULAR_SETTINGS = {
             "name": "Intelligence APIs",
             "description": "Rule-based wait predictions, statistical arrival forecasts, slot suggestions, and prediction evaluation.",
         },
+        {
+            "name": "Notification Management APIs",
+            "description": "Patient notifications, delivery workflows, factory actions, and push device registration.",
+        },
     ],
 }
 
