@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.permissions import IsAuthenticatedActive
@@ -19,6 +20,7 @@ from apps.accounts.serializers import (
 )
 from apps.accounts.services import change_user_password, update_user
 
+from ._auth_cookies import clear_auth_cookies, set_auth_cookies
 from ._helpers import translate_domain_error
 
 
@@ -43,34 +45,45 @@ class AuthViewSet(viewsets.GenericViewSet):
             return Response({"detail": "User account is inactive."}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken.for_user(user)
-        return Response(
+        response = Response(
             {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
                 "user": UserSummarySerializer(user).data,
             }
+        )
+        return set_auth_cookies(
+            response=response,
+            access_token=str(refresh.access_token),
+            refresh_token=str(refresh),
         )
 
     @action(detail=False, methods=["post"], permission_classes=[AllowAny], authentication_classes=[], url_path="refresh")
     def refresh(self, request):
-        serializer = TokenRefreshSerializer(data=request.data)
+        refresh_token = request.data.get("refresh") or request.COOKIES.get("refresh_token")
+        serializer = TokenRefreshSerializer(data={"refresh": refresh_token})
         serializer.is_valid(raise_exception=True)
-        return Response(serializer.validated_data)
+        response = Response({"detail": "Session refreshed."})
+        return set_auth_cookies(
+            response=response,
+            access_token=serializer.validated_data["access"],
+            refresh_token=refresh_token,
+        )
 
     @action(detail=False, methods=["post"], url_path="logout")
     def logout(self, request):
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        refresh = RefreshToken(serializer.validated_data["refresh"])
-        if not hasattr(refresh, "blacklist"):
-            return Response(
-                {"detail": "Refresh token blacklist is not configured."},
-                status=status.HTTP_501_NOT_IMPLEMENTED,
-            )
+        refresh_token = serializer.validated_data.get("refresh") or request.COOKIES.get("refresh_token")
+        if refresh_token:
+            try:
+                refresh = RefreshToken(refresh_token)
+                if hasattr(refresh, "blacklist"):
+                    refresh.blacklist()
+            except TokenError:
+                pass
 
-        refresh.blacklist()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        return clear_auth_cookies(response)
 
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):

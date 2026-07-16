@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from datetime import timedelta
 
 from dotenv import load_dotenv
 
@@ -16,6 +17,7 @@ CORS_ALLOWED_ORIGINS = [
     for origin in os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+CORS_ALLOW_CREDENTIALS = True
 ENVIRONMENT = os.getenv("APP_ENV", os.getenv("DJANGO_ENVIRONMENT", "local"))
 
 INSTALLED_APPS = [
@@ -110,7 +112,7 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
     "EXCEPTION_HANDLER": "common.exceptions.handlers.custom_exception_handler",
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.CookieJWTAuthentication",
     ),
 }
 
@@ -185,9 +187,16 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@example.com")
 
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": True,
 }
+
+AUTH_COOKIE_ACCESS_NAME = "access_token"
+AUTH_COOKIE_REFRESH_NAME = "refresh_token"
+AUTH_COOKIE_SAMESITE = "Lax"
+AUTH_COOKIE_SECURE = not DEBUG
 
 LOGGING = {
     "version": 1,

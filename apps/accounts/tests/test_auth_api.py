@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from django.urls import reverse
+from django.conf import settings
 
 import pytest
 
 
 @pytest.mark.django_db
-def test_login_with_email_succeeds(api_client, user_factory):
+def test_login_with_email_sets_http_only_cookies(api_client, user_factory):
     user = user_factory(email="email-login@example.com", phone_number=None)
 
     response = api_client.post(
@@ -16,8 +17,9 @@ def test_login_with_email_succeeds(api_client, user_factory):
     )
 
     assert response.status_code == 200
-    assert "access" in response.data
-    assert "refresh" in response.data
+    assert settings.AUTH_COOKIE_ACCESS_NAME in response.cookies
+    assert response.cookies[settings.AUTH_COOKIE_ACCESS_NAME]["httponly"]
+    assert response.cookies[settings.AUTH_COOKIE_ACCESS_NAME]["samesite"] == settings.AUTH_COOKIE_SAMESITE
     assert response.data["user"]["email"] == user.email
     assert "password" not in response.data["user"]
     assert "is_staff" not in response.data["user"]
@@ -25,7 +27,7 @@ def test_login_with_email_succeeds(api_client, user_factory):
 
 
 @pytest.mark.django_db
-def test_login_with_phone_number_succeeds(api_client, user_factory):
+def test_login_sets_refresh_cookie_if_refresh_exists(api_client, user_factory):
     user = user_factory(email="phone-login@example.com", phone_number="+255700111222")
 
     response = api_client.post(
@@ -35,6 +37,8 @@ def test_login_with_phone_number_succeeds(api_client, user_factory):
     )
 
     assert response.status_code == 200
+    assert settings.AUTH_COOKIE_REFRESH_NAME in response.cookies
+    assert response.cookies[settings.AUTH_COOKIE_REFRESH_NAME]["httponly"]
     assert response.data["user"]["phone_number"] == user.phone_number
 
 
@@ -77,32 +81,32 @@ def test_refresh_token_endpoint_works(api_client, user_factory):
         {"email_or_phone": user.email, "password": "Password123!"},
         format="json",
     )
-    refresh = login_response.data["refresh"]
+    refresh = login_response.cookies[settings.AUTH_COOKIE_REFRESH_NAME].value
 
     response = api_client.post(reverse("auth-refresh"), {"refresh": refresh}, format="json")
 
     assert response.status_code == 200
-    assert "access" in response.data
+    assert response.data["detail"] == "Session refreshed."
+    assert settings.AUTH_COOKIE_ACCESS_NAME in response.cookies
 
 
 @pytest.mark.django_db
-def test_logout_endpoint_works_with_blacklist(authenticated_client, user_factory):
+def test_logout_clears_cookies(api_client, user_factory):
     user = user_factory(email="logout@example.com")
-    client = authenticated_client(user)
 
-    login_response = client.post(
+    login_response = api_client.post(
         reverse("auth-login"),
         {"email_or_phone": user.email, "password": "Password123!"},
         format="json",
     )
+    api_client.cookies[settings.AUTH_COOKIE_ACCESS_NAME] = login_response.cookies[settings.AUTH_COOKIE_ACCESS_NAME].value
+    api_client.cookies[settings.AUTH_COOKIE_REFRESH_NAME] = login_response.cookies[settings.AUTH_COOKIE_REFRESH_NAME].value
 
-    response = client.post(
-        reverse("auth-logout"),
-        {"refresh": login_response.data["refresh"]},
-        format="json",
-    )
+    response = api_client.post(reverse("auth-logout"), format="json")
 
     assert response.status_code == 204
+    assert response.cookies[settings.AUTH_COOKIE_ACCESS_NAME].value == ""
+    assert response.cookies[settings.AUTH_COOKIE_REFRESH_NAME].value == ""
 
 
 @pytest.mark.django_db
@@ -112,11 +116,16 @@ def test_auth_me_requires_authentication(api_client):
 
 
 @pytest.mark.django_db
-def test_authenticated_user_can_access_auth_me(authenticated_client, user_factory):
+def test_authenticated_user_can_access_auth_me_using_cookie(api_client, user_factory):
     user = user_factory(email="me@example.com", middle_name="Middle")
-    client = authenticated_client(user)
+    login_response = api_client.post(
+        reverse("auth-login"),
+        {"email_or_phone": user.email, "password": "Password123!"},
+        format="json",
+    )
+    api_client.cookies[settings.AUTH_COOKIE_ACCESS_NAME] = login_response.cookies[settings.AUTH_COOKIE_ACCESS_NAME].value
 
-    response = client.get(reverse("auth-me"))
+    response = api_client.get(reverse("auth-me"))
 
     assert response.status_code == 200
     assert response.data["email"] == user.email
