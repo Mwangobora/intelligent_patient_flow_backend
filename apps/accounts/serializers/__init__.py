@@ -20,6 +20,7 @@ from .role_serializers import (
     RoleUpdateSerializer,
 )
 from .user_serializers import (
+    CurrentUserSerializer,
     MeUpdateSerializer,
     UserCreateSerializer,
     UserDetailSerializer,
@@ -30,6 +31,7 @@ from .user_serializers import (
 
 __all__ = [
     "ChangePasswordSerializer",
+    "CurrentUserSerializer",
     "EndMembershipSerializer",
     "FacilityMembershipCreateSerializer",
     "LoginSerializer",

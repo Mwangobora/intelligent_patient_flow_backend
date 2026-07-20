@@ -78,6 +78,23 @@ class UserDetailSerializer(UserSummarySerializer):
         fields = UserSummarySerializer.Meta.fields + ["memberships", "role_assignments"]
 
 
+class CurrentUserSerializer(UserSummarySerializer):
+    has_global_access = serializers.SerializerMethodField()
+    memberships = MembershipSummarySerializer(many=True, read_only=True)
+    permissions = serializers.SerializerMethodField()
+
+    class Meta(UserSummarySerializer.Meta):
+        fields = UserSummarySerializer.Meta.fields + ["has_global_access", "memberships", "permissions"]
+
+    def get_has_global_access(self, obj):
+        return bool(obj.is_superuser)
+
+    def get_permissions(self, obj):
+        from apps.accounts.selectors.permission_selectors import get_user_effective_permissions
+
+        return list(get_user_effective_permissions(user=obj).values_list("code", flat=True))
+
+
 class UserCreateSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)

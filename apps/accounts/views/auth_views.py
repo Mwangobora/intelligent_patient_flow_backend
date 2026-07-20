@@ -13,10 +13,10 @@ from apps.accounts.permissions import IsAuthenticatedActive
 from apps.accounts.selectors import get_user_by_email_or_phone
 from apps.accounts.serializers import (
     ChangePasswordSerializer,
+    CurrentUserSerializer,
     LoginSerializer,
     LogoutSerializer,
     MeUpdateSerializer,
-    UserSummarySerializer,
 )
 from apps.accounts.services import change_user_password, update_user
 
@@ -26,7 +26,7 @@ from ._helpers import translate_domain_error
 
 @extend_schema(tags=["Auth APIs"])
 class AuthViewSet(viewsets.GenericViewSet):
-    serializer_class = UserSummarySerializer
+    serializer_class = CurrentUserSerializer
 
     def get_permissions(self):
         if self.action in {"login", "refresh"}:
@@ -47,7 +47,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         refresh = RefreshToken.for_user(user)
         response = Response(
             {
-                "user": UserSummarySerializer(user).data,
+                "user": CurrentUserSerializer(user).data,
             }
         )
         return set_auth_cookies(
@@ -88,7 +88,7 @@ class AuthViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):
         if request.method == "GET":
-            return Response(UserSummarySerializer(request.user).data)
+            return Response(CurrentUserSerializer(request.user).data)
 
         serializer = MeUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -96,7 +96,7 @@ class AuthViewSet(viewsets.GenericViewSet):
             user = update_user(user_id=request.user.id, **serializer.validated_data)
         except Exception as exc:
             translate_domain_error(exc)
-        return Response(UserSummarySerializer(user).data)
+        return Response(CurrentUserSerializer(user).data)
 
     @action(detail=False, methods=["post"], url_path="change-password")
     def change_password(self, request):
