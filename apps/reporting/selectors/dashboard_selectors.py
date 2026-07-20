@@ -59,7 +59,8 @@ def _scope_context(*, organization_id=None, facility_id=None, date_from=None, da
 
 
 def _apply_facility_scope(queryset, *, organization_id, facility=None, facility_path="facility"):
-    queryset = queryset.filter(**{f"{facility_path}__organization_id": organization_id})
+    if organization_id:
+        queryset = queryset.filter(**{f"{facility_path}__organization_id": organization_id})
     if facility is not None:
         queryset = queryset.filter(**{f"{facility_path}_id": facility.id})
     return queryset
@@ -165,7 +166,9 @@ def get_dashboard_overview_summary(**filters):
     organization_id, facility, start, end = _scope_context(**filters)
     generated_at = timezone.now()
 
-    patients = Patient.objects.filter(organization_id=organization_id, is_active=True)
+    patients = Patient.objects.filter(is_active=True)
+    if organization_id:
+        patients = patients.filter(organization_id=organization_id)
     if facility is not None:
         patients = patients.filter(registered_facility_id=facility.id)
 

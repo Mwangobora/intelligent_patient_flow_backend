@@ -18,8 +18,6 @@ class DashboardQueryInputSerializer(serializers.Serializer):
     def validate(self, attrs):
         organization_id = attrs.get("organization_id")
         facility_id = attrs.get("facility_id")
-        if not organization_id and not facility_id:
-            raise serializers.ValidationError("organization_id or facility_id is required.")
 
         if attrs.get("date_from") and attrs.get("date_to") and attrs["date_to"] < attrs["date_from"]:
             raise serializers.ValidationError("date_to must be greater than or equal to date_from.")
