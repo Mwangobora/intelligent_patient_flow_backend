@@ -6,9 +6,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAuthenticatedActive
+from apps.checkins.models import CheckinToken
 from apps.checkins._helpers import translate_domain_error
 from apps.checkins.serializers import CheckinOutputSerializer
-from apps.checkins.services import create_appointment_checkin
+from apps.checkins.services import consume_checkin_token, create_appointment_checkin, issue_checkin_token
+from apps.checkins.services._crypto import build_token_hash
 from apps.patients.selectors import (
     PATIENT_QUEUE_HISTORY_STATUSES,
     build_patient_queue_history_payload,
@@ -23,6 +25,8 @@ from apps.patients.serializers import (
     PatientAppointmentCheckinResponseSerializer,
     PatientCheckinEligibilityQuerySerializer,
     PatientCheckinEligibilitySerializer,
+    PatientQrConsumeInputSerializer,
+    PatientQrTokenIssueResponseSerializer,
     PatientQueueCurrentSerializer,
     PatientQueueHistoryResponseSerializer,
 )
@@ -127,6 +131,86 @@ class PatientAppointmentCheckinAPIView(APIView):
                 facility_specialty_id=appointment.facility_specialty_id,
                 checkin_method="mobile",
             )
+        except Exception as exc:
+            translate_domain_error(exc)
+
+        queue_entry = list_entries_by_checkin(patient_checkin_id=checkin.id).first()
+        payload = {
+            "checkin": CheckinOutputSerializer(checkin).data,
+            "queue_entry": build_patient_queue_payload(queue_entry) if queue_entry else None,
+            "message": (
+                "You are checked in. Please wait for reception to add you to the queue."
+                if queue_entry is None
+                else "Check-in successful. Your queue status is ready."
+            ),
+        }
+        return Response(PatientAppointmentCheckinResponseSerializer(payload).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentQrTokenIssueAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={201: PatientQrTokenIssueResponseSerializer})
+    def post(self, request, appointment_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        appointment = (
+            Appointment.objects.select_related("facility", "facility_specialty")
+            .filter(pk=appointment_id, patient=patient)
+            .first()
+        )
+        if appointment is None:
+            return Response({"detail": "Appointment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        reason = checkin_block_reason(appointment=appointment)
+        if reason is not None:
+            return Response({"detail": "QR token cannot be issued.", "reason": reason}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            issued = issue_checkin_token(appointment_id=appointment.id, created_by_id=request.user.id)
+        except Exception as exc:
+            translate_domain_error(exc)
+
+        payload = {
+            "id": issued.token.id,
+            "appointment_id": appointment.id,
+            "raw_token": issued.raw_token,
+            "expires_at": issued.token.expires_at,
+        }
+        return Response(PatientQrTokenIssueResponseSerializer(payload).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientQrConsumeAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(request=PatientQrConsumeInputSerializer, responses={201: PatientAppointmentCheckinResponseSerializer})
+    def post(self, request):
+        serializer = PatientQrConsumeInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        raw_token = serializer.validated_data["token"]
+        token = (
+            CheckinToken.objects.select_related("appointment", "appointment__patient")
+            .filter(token_hash=build_token_hash(raw_token))
+            .first()
+        )
+        if token is None:
+            return Response({"detail": "This QR code is not valid.", "reason": "invalid_qr"}, status=status.HTTP_400_BAD_REQUEST)
+        if token.appointment.patient_id != patient.id:
+            return Response(
+                {"detail": "This QR code does not belong to your account.", "reason": "not_your_appointment"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            checkin = consume_checkin_token(raw_token=raw_token)
         except Exception as exc:
             translate_domain_error(exc)
 

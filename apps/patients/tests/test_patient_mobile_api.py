@@ -7,6 +7,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.checkins.models import PatientCheckin
+from apps.checkins.services import issue_checkin_token
+from apps.checkins.services._crypto import build_token_hash
 from apps.facilities.models import Department, FacilitySpecialty, ServicePoint, ServicePointType, Specialty
 from apps.patients.models import Patient
 from apps.queueing.models import Queue, QueueEntry
@@ -152,6 +154,103 @@ def test_patient_can_check_in_own_appointment_if_eligible(patient_mobile_client,
     assert PatientCheckin.objects.filter(appointment=appointment, voided_at__isnull=True).exists()
     appointment.refresh_from_db()
     assert appointment.status == Appointment.Status.CHECKED_IN
+
+
+@pytest.mark.django_db
+def test_patient_can_issue_qr_token_for_own_appointment(patient_mobile_client, appointment):
+    response = patient_mobile_client.post(
+        reverse("patient-appointment-qr-token", kwargs={"appointment_id": appointment.id}),
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["appointment_id"] == str(appointment.id)
+    assert response.data["raw_token"]
+    assert "token_hash" not in response.data
+
+
+@pytest.mark.django_db
+def test_patient_can_consume_own_qr_token(patient_mobile_client, appointment):
+    issue_response = patient_mobile_client.post(
+        reverse("patient-appointment-qr-token", kwargs={"appointment_id": appointment.id}),
+        format="json",
+    )
+
+    response = patient_mobile_client.post(
+        reverse("patient-qr-consume"),
+        {"token": issue_response.data["raw_token"]},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert str(response.data["checkin"]["appointment"]) == str(appointment.id)
+    assert PatientCheckin.objects.filter(appointment=appointment, voided_at__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_patient_cannot_consume_another_patients_qr_token(
+    patient_mobile_client,
+    patient_with_user,
+    user_factory,
+    organization,
+    facility,
+    facility_specialty,
+):
+    other_user = user_factory(email="qr-other@example.com", phone_number="+255744111222")
+    other_patient = Patient.objects.create(
+        organization=organization,
+        user=other_user,
+        registered_facility=facility,
+        patient_number="PAT-QR-OTHER",
+        first_name="Other",
+        last_name="Qr",
+    )
+    now = timezone.now()
+    other_appointment = Appointment.objects.create(
+        facility=facility,
+        patient=other_patient,
+        facility_specialty=facility_specialty,
+        appointment_number="APT-QR-OTHER",
+        scheduled_start=now + timedelta(minutes=5),
+        scheduled_end=now + timedelta(minutes=35),
+        status=Appointment.Status.CONFIRMED,
+        booking_channel=Appointment.BookingChannel.MOBILE,
+    )
+    issued = issue_checkin_token(appointment_id=other_appointment.id, created_by_id=other_user.id)
+
+    response = patient_mobile_client.post(
+        reverse("patient-qr-consume"),
+        {"token": issued.raw_token},
+        format="json",
+    )
+
+    assert response.status_code == 403
+    assert response.data["reason"] == "not_your_appointment"
+
+
+@pytest.mark.django_db
+def test_invalid_qr_token_fails_cleanly(patient_mobile_client, patient_with_user):
+    response = patient_mobile_client.post(
+        reverse("patient-qr-consume"),
+        {"token": "not-a-valid-token"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.data["reason"] == "invalid_qr"
+
+
+@pytest.mark.django_db
+def test_qr_token_is_stored_as_hash_not_plaintext(patient_mobile_client, appointment):
+    response = patient_mobile_client.post(
+        reverse("patient-appointment-qr-token", kwargs={"appointment_id": appointment.id}),
+        format="json",
+    )
+
+    raw_token = response.data["raw_token"]
+    assert not PatientCheckin.objects.filter(notes__icontains=raw_token).exists()
+    assert appointment.checkin_tokens.filter(token_hash=build_token_hash(raw_token)).exists()
+    assert not appointment.checkin_tokens.filter(token_hash=raw_token).exists()
 
 
 @pytest.mark.django_db

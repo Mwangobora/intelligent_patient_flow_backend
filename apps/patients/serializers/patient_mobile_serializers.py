@@ -41,6 +41,17 @@ class PatientAppointmentCheckinResponseSerializer(serializers.Serializer):
     message = serializers.CharField()
 
 
+class PatientQrTokenIssueResponseSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    appointment_id = serializers.UUIDField()
+    raw_token = serializers.CharField()
+    expires_at = serializers.DateTimeField()
+
+
+class PatientQrConsumeInputSerializer(serializers.Serializer):
+    token = serializers.CharField(write_only=True, trim_whitespace=True)
+
+
 class PatientQueueCurrentSerializer(serializers.Serializer):
     queue_entry_id = serializers.UUIDField(allow_null=True)
     queue_number = serializers.CharField(allow_null=True)
