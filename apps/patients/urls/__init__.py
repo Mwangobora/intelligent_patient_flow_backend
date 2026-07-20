@@ -4,8 +4,12 @@ from rest_framework_nested.routers import NestedSimpleRouter, SimpleRouter
 from apps.patients.views import (
     PatientAccessGrantViewSet,
     PatientAddressViewSet,
+    PatientAppointmentCheckinAPIView,
+    PatientCheckinEligibilityAPIView,
+    PatientCurrentQueueAPIView,
     PatientIdentifierTypeViewSet,
     PatientIdentifierViewSet,
+    PatientQueueHistoryAPIView,
     PatientRelatedPersonViewSet,
     PatientViewSet,
     RelatedPersonContactViewSet,
@@ -32,6 +36,14 @@ related_person_router = NestedSimpleRouter(router, r"patients/related-persons", 
 related_person_router.register(r"contacts", RelatedPersonContactViewSet, basename="patients-related-person-contacts-nested")
 
 urlpatterns = [
+    path("patient/checkins/eligibility/", PatientCheckinEligibilityAPIView.as_view(), name="patient-checkin-eligibility"),
+    path(
+        "patient/checkins/appointments/<uuid:appointment_id>/check-in/",
+        PatientAppointmentCheckinAPIView.as_view(),
+        name="patient-appointment-checkin",
+    ),
+    path("patient/queue/current/", PatientCurrentQueueAPIView.as_view(), name="patient-current-queue"),
+    path("patient/queue/history/", PatientQueueHistoryAPIView.as_view(), name="patient-queue-history"),
     path("", include(router.urls)),
     path("", include(patient_router.urls)),
     path("", include(related_person_router.urls)),
