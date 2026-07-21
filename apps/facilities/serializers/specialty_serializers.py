@@ -21,13 +21,11 @@ class SpecialtyDetailSerializer(SpecialtyListSerializer):
 class SpecialtyCreateSerializer(serializers.Serializer):
     parent_specialty_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class SpecialtyUpdateSerializer(SpecialtyCreateSerializer):
     name = serializers.CharField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class FacilitySpecialtyDetailSerializer(serializers.ModelSerializer):

@@ -6,6 +6,7 @@ Run from the backend repository root:
 
 ```bash
 docker compose exec -T api python manage.py dbshell < database/seeds/ui_demo_data.sql
+docker compose exec -T api python manage.py backfill_codes
 ```
 
 Demo login:
@@ -63,3 +64,4 @@ Security notes:
 - Raw QR/check-in tokens and raw push tokens are not stored.
 - The file does not disable foreign keys, checks, exclusion constraints, or append-only triggers.
 - The seed sets database timestamp defaults where the migrated local database relies on Django application-level defaults, matching the project SQL schema for direct SQL imports.
+- Generated-code columns are still present in this direct SQL seed because those columns are NOT NULL and direct SQL bypasses Django services. Normal API/UI creates generate codes in the backend and do not accept user-entered codes.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from django.urls import reverse
 
 import pytest
@@ -215,7 +217,7 @@ def test_role_api_does_not_hardcode_behavior_by_role_code(
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "ADMIN"
+    assert re.fullmatch(r"ROLE\d{4}", response.data["code"])
     assert str(response.data["organization"]) == str(organization.id)
 
 

@@ -18,15 +18,12 @@ class RelationshipTypeDetailSerializer(RelationshipTypeListSerializer):
 
 class RelationshipTypeCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class RelationshipTypeUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class PatientRelatedPersonDetailSerializer(serializers.ModelSerializer):

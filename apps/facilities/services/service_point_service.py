@@ -15,7 +15,7 @@ from ._shared import (
     require_non_empty_name,
     require_positive_smallint,
 )
-from .code_generation import generate_unique_code, normalize_code_value
+from .code_generation import generate_unique_code
 
 
 @transaction.atomic
@@ -46,12 +46,7 @@ def create_service_point(
     )
 
     queryset = ServicePoint.objects.filter(facility=facility)
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Service point code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(model=ServicePoint, source_value=cleaned_name, queryset=queryset)
+    normalized_code = generate_unique_code(model=ServicePoint, source_value=cleaned_name, queryset=queryset)
 
     if queryset.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Service point code already exists in this facility.")
@@ -84,7 +79,6 @@ def update_service_point(
         "department_id",
         "service_point_type_id",
         "name",
-        "code",
         "location_description",
         "floor",
         "display_order",
@@ -117,14 +111,7 @@ def update_service_point(
         next_name = require_non_empty_name(value=updates["name"], label="Service point name")
 
     queryset = ServicePoint.objects.filter(facility=facility).exclude(pk=service_point.pk)
-    if regenerate_code:
-        next_code = generate_unique_code(model=ServicePoint, source_value=next_name, queryset=queryset)
-    elif "code" in updates and updates["code"] is not None:
-        next_code = normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Service point code cannot be empty.")
-    else:
-        next_code = service_point.code
+    next_code = service_point.code
 
     if queryset.select_for_update().filter(code=next_code).exists():
         raise ConflictError("Service point code already exists in this facility.")

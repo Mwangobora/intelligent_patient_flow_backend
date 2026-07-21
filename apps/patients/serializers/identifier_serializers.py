@@ -30,17 +30,14 @@ class PatientIdentifierTypeDetailSerializer(PatientIdentifierTypeListSerializer)
 class PatientIdentifierTypeCreateSerializer(serializers.Serializer):
     organization_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     is_sensitive = serializers.BooleanField(required=False, default=True)
 
 
 class PatientIdentifierTypeUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     is_sensitive = serializers.BooleanField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class PatientIdentifierDetailSerializer(serializers.ModelSerializer):

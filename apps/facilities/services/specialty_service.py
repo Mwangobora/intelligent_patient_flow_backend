@@ -6,7 +6,7 @@ from apps.facilities.models import Specialty
 from common.exceptions import ConflictError, ValidationError
 
 from ._shared import clean_optional_text, ensure_parent_specialty_valid, get_specialty_for_update, require_non_empty_name
-from .code_generation import generate_unique_code, normalize_code_value
+from .code_generation import generate_unique_code
 
 
 @transaction.atomic
@@ -21,12 +21,7 @@ def create_specialty(
     parent_specialty = get_specialty_for_update(parent_specialty_id) if parent_specialty_id else None
     ensure_parent_specialty_valid(parent_specialty=parent_specialty)
 
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Specialty code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(model=Specialty, source_value=cleaned_name)
+    normalized_code = generate_unique_code(model=Specialty, source_value=cleaned_name)
 
     queryset = Specialty.objects.select_for_update()
     if queryset.filter(code=normalized_code).exists():
@@ -53,7 +48,7 @@ def update_specialty(
     **updates,
 ) -> Specialty:
     specialty = get_specialty_for_update(specialty_id)
-    allowed_fields = {"parent_specialty_id", "name", "code", "description"}
+    allowed_fields = {"parent_specialty_id", "name", "description"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         raise ValidationError(f"Unsupported specialty update fields: {', '.join(sorted(unexpected_fields))}.")
@@ -73,14 +68,7 @@ def update_specialty(
     if queryset.filter(name__iexact=next_name).exists():
         raise ConflictError("Specialty name already exists.")
 
-    if regenerate_code:
-        next_code = generate_unique_code(model=Specialty, source_value=next_name, queryset=queryset)
-    elif "code" in updates and updates["code"] is not None:
-        next_code = normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Specialty code cannot be empty.")
-    else:
-        next_code = specialty.code
+    next_code = specialty.code
 
     if queryset.filter(code=next_code).exists():
         raise ConflictError("Specialty code already exists.")

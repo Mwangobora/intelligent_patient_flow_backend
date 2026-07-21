@@ -42,7 +42,6 @@ class RoleDetailSerializer(RoleListSerializer):
 
 class RoleCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     organization_id = serializers.UUIDField(required=False, allow_null=True)
     facility_id = serializers.UUIDField(required=False, allow_null=True)
@@ -50,11 +49,9 @@ class RoleCreateSerializer(serializers.Serializer):
 
 class RoleUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
-    code = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     organization_id = serializers.UUIDField(required=False, allow_null=True)
     facility_id = serializers.UUIDField(required=False, allow_null=True)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class RolePermissionActionSerializer(serializers.Serializer):

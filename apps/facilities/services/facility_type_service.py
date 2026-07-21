@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from apps.facilities.models import FacilityType
 from common.exceptions import ConflictError, NotFoundError, ValidationError
 
-from .code_generation import generate_unique_code, normalize_code_value
+from .code_generation import generate_unique_code
 
 
 def _get_facility_type_for_update(facility_type_id) -> FacilityType:
@@ -37,15 +37,7 @@ def create_facility_type(
 
     _ensure_unique_name(name=cleaned_name)
 
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Facility type code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(
-            model=FacilityType,
-            source_value=cleaned_name,
-        )
+    normalized_code = generate_unique_code(model=FacilityType, source_value=cleaned_name)
     if FacilityType.objects.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Facility type code already exists.")
 
@@ -68,7 +60,7 @@ def update_facility_type(
 ) -> FacilityType:
     facility_type = _get_facility_type_for_update(facility_type_id)
 
-    allowed_fields = {"name", "description", "code"}
+    allowed_fields = {"name", "description"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         unexpected = ", ".join(sorted(unexpected_fields))
@@ -83,20 +75,6 @@ def update_facility_type(
 
     if "description" in updates:
         facility_type.description = updates["description"].strip() if updates["description"] else None
-
-    if regenerate_code:
-        facility_type.code = generate_unique_code(
-            model=FacilityType,
-            source_value=facility_type.name,
-            queryset=FacilityType.objects.exclude(pk=facility_type.pk),
-        )
-    elif "code" in updates and updates["code"] is not None:
-        normalized_code = normalize_code_value(updates["code"])
-        if not normalized_code:
-            raise ValidationError("Facility type code cannot be empty.")
-        if FacilityType.objects.select_for_update().exclude(pk=facility_type.pk).filter(code=normalized_code).exists():
-            raise ConflictError("Facility type code already exists.")
-        facility_type.code = normalized_code
 
     try:
         facility_type.save()

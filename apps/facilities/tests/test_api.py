@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from django.urls import reverse
 
 import pytest
@@ -48,11 +50,11 @@ def test_authorized_user_can_create_organization_and_code_is_generated(
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "NEW_HEALTH_NETWORK"
+    assert re.fullmatch(r"ORG\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
-def test_duplicate_organization_code_fails_cleanly(
+def test_client_provided_organization_code_is_ignored(
     authenticated_client,
     grant_system_permission,
     user_factory,
@@ -68,7 +70,9 @@ def test_duplicate_organization_code_fails_cleanly(
         format="json",
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 201
+    assert response.data["code"] != "EXISTING_ORG"
+    assert re.fullmatch(r"ORG\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
@@ -84,7 +88,7 @@ def test_create_facility_type(authenticated_client, grant_system_permission, use
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "DISPENSARY"
+    assert re.fullmatch(r"FTY\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
@@ -111,7 +115,7 @@ def test_create_facility_under_active_organization_and_active_facility_type(
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "DISTRICT_HOSPITAL"
+    assert re.fullmatch(r"FAC\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
@@ -220,7 +224,7 @@ def test_create_department(authenticated_client, facility, grant_system_permissi
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "LABORATORY"
+    assert re.fullmatch(r"DEP\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
@@ -263,7 +267,7 @@ def test_create_specialty(authenticated_client, grant_system_permission, user_fa
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "ONCOLOGY"
+    assert re.fullmatch(r"SPC\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
@@ -371,7 +375,7 @@ def test_create_service_point(
     )
 
     assert create_response.status_code == 201
-    assert create_response.data["code"] == "FRONT_DESK"
+    assert re.fullmatch(r"SVP\d{4}", create_response.data["code"])
 
 
 @pytest.mark.django_db

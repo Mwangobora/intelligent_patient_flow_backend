@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import re
 
 from django.urls import reverse
 
@@ -55,11 +56,11 @@ def test_authorized_user_can_create_practitioner_type_and_code_is_generated(auth
     response = client.post(reverse("practitioners-types-list"), {"name": "Clinical Officer"}, format="json")
 
     assert response.status_code == 201
-    assert response.data["code"] == "CLINICAL_OFFICER"
+    assert re.fullmatch(r"PRT\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db
-def test_duplicate_practitioner_type_name_or_code_fails(authenticated_client, grant_system_permission, practitioner_type, user_factory):
+def test_duplicate_practitioner_type_name_fails_and_supplied_code_is_ignored(authenticated_client, grant_system_permission, practitioner_type, user_factory):
     user = user_factory()
     grant_system_permission(user=user, permission_code="practitioners_type.manage")
     client = authenticated_client(user)
@@ -76,7 +77,9 @@ def test_duplicate_practitioner_type_name_or_code_fails(authenticated_client, gr
     )
 
     assert name_response.status_code == 400
-    assert code_response.status_code == 400
+    assert code_response.status_code == 201
+    assert code_response.data["code"] != practitioner_type.code
+    assert re.fullmatch(r"PRT\d{4}", code_response.data["code"])
 
 
 @pytest.mark.django_db
@@ -487,7 +490,7 @@ def test_credential_type_can_be_global_or_organization_specific(
 
 
 @pytest.mark.django_db
-def test_duplicate_credential_type_name_or_code_in_same_scope_fails(
+def test_duplicate_credential_type_name_fails_and_supplied_code_is_ignored(
     authenticated_client,
     credential_type_org,
     grant_system_permission,
@@ -515,7 +518,9 @@ def test_duplicate_credential_type_name_or_code_in_same_scope_fails(
     )
 
     assert name_response.status_code == 400
-    assert code_response.status_code == 400
+    assert code_response.status_code == 201
+    assert code_response.data["code"] != credential_type_org.code
+    assert re.fullmatch(r"PCT\d{4}", code_response.data["code"])
 
 
 @pytest.mark.django_db

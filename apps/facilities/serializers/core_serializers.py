@@ -19,7 +19,6 @@ class OrganizationDetailSerializer(OrganizationListSerializer):
 class OrganizationCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
     legal_name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     phone_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     registration_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -42,13 +41,11 @@ class FacilityTypeDetailSerializer(FacilityTypeListSerializer):
 
 class FacilityTypeCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class FacilityTypeUpdateSerializer(FacilityTypeCreateSerializer):
     name = serializers.CharField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class FacilityListSerializer(serializers.ModelSerializer):
@@ -109,7 +106,6 @@ class FacilityCreateSerializer(serializers.Serializer):
     organization_id = serializers.UUIDField()
     facility_type_id = serializers.UUIDField()
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     license_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     phone_number = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -130,4 +126,3 @@ class FacilityUpdateSerializer(FacilityCreateSerializer):
     organization_id = serializers.UUIDField(required=False)
     facility_type_id = serializers.UUIDField(required=False)
     name = serializers.CharField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)

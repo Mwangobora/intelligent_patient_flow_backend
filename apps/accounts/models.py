@@ -20,6 +20,24 @@ permission_code_validator = RegexValidator(
 )
 
 
+class CodeSequence(TimeStampedModel):
+    key = models.CharField(max_length=80, unique=True)
+    prefix = models.CharField(max_length=20)
+    last_number = models.PositiveIntegerField(default=0)
+    padding = models.PositiveSmallIntegerField(default=4)
+
+    class Meta:
+        db_table = "code_sequences"
+        ordering = ["key"]
+        constraints = [
+            models.CheckConstraint(condition=Q(last_number__gte=0), name="ck_code_sequences_last_number"),
+            models.CheckConstraint(condition=Q(padding__gte=1), name="ck_code_sequences_padding"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.key}: {self.prefix}{self.last_number:0{self.padding}d}"
+
+
 class UserManager(BaseUserManager):
     def create_user(
         self,

@@ -12,7 +12,7 @@ from ._shared import (
     get_facility_for_update,
     require_non_empty_name,
 )
-from .code_generation import generate_unique_code, normalize_code_value
+from .code_generation import generate_unique_code
 
 
 @transaction.atomic
@@ -30,12 +30,7 @@ def create_department(
     ensure_parent_department_valid(parent_department=parent_department, facility=facility)
 
     queryset = Department.objects.filter(facility=facility)
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Department code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(model=Department, source_value=cleaned_name, queryset=queryset)
+    normalized_code = generate_unique_code(model=Department, source_value=cleaned_name, queryset=queryset)
 
     if queryset.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Department code already exists in this facility.")
@@ -60,7 +55,7 @@ def update_department(
     **updates,
 ) -> Department:
     department = get_department_for_update(department_id)
-    allowed_fields = {"facility_id", "parent_department_id", "name", "code", "description"}
+    allowed_fields = {"facility_id", "parent_department_id", "name", "description"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         raise ValidationError(f"Unsupported department update fields: {', '.join(sorted(unexpected_fields))}.")
@@ -87,14 +82,7 @@ def update_department(
     )
 
     queryset = Department.objects.filter(facility=facility).exclude(pk=department.pk)
-    if regenerate_code:
-        next_code = generate_unique_code(model=Department, source_value=next_name, queryset=queryset)
-    elif "code" in updates and updates["code"] is not None:
-        next_code = normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Department code cannot be empty.")
-    else:
-        next_code = department.code
+    next_code = department.code
 
     if queryset.select_for_update().filter(code=next_code).exists():
         raise ConflictError("Department code already exists in this facility.")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import re
 
 from django.urls import reverse
 from django.utils import timezone
@@ -248,7 +249,7 @@ def test_create_global_identifier_type(authenticated_client, grant_system_permis
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "PASSPORT"
+    assert re.fullmatch(r"PIT\d{4}", response.data["code"])
     assert response.data["organization"] is None
 
 
@@ -535,7 +536,7 @@ def test_create_relationship_type(authenticated_client, grant_system_permission,
     )
 
     assert response.status_code == 201
-    assert response.data["code"] == "CAREGIVER"
+    assert re.fullmatch(r"REL\d{4}", response.data["code"])
 
 
 @pytest.mark.django_db

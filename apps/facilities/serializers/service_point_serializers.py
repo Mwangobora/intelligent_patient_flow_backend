@@ -18,13 +18,11 @@ class ServicePointTypeDetailSerializer(ServicePointTypeListSerializer):
 
 class ServicePointTypeCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class ServicePointTypeUpdateSerializer(ServicePointTypeCreateSerializer):
     name = serializers.CharField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class ServicePointDetailSerializer(serializers.ModelSerializer):
@@ -58,7 +56,6 @@ class ServicePointCreateSerializer(serializers.Serializer):
     department_id = serializers.UUIDField(required=False, allow_null=True)
     service_point_type_id = serializers.UUIDField()
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     location_description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     floor = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     display_order = serializers.IntegerField(required=False, default=0)
@@ -68,7 +65,6 @@ class ServicePointUpdateSerializer(ServicePointCreateSerializer):
     facility_id = serializers.UUIDField(required=False)
     service_point_type_id = serializers.UUIDField(required=False)
     name = serializers.CharField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class ConsultationRoomDetailSerializer(serializers.ModelSerializer):
@@ -98,7 +94,6 @@ class ConsultationRoomCreateSerializer(serializers.Serializer):
     facility_id = serializers.UUIDField()
     department_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     location_description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     floor = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     capacity = serializers.IntegerField(required=False, default=1)
@@ -107,4 +102,3 @@ class ConsultationRoomCreateSerializer(serializers.Serializer):
 class ConsultationRoomUpdateSerializer(ConsultationRoomCreateSerializer):
     facility_id = serializers.UUIDField(required=False)
     name = serializers.CharField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)

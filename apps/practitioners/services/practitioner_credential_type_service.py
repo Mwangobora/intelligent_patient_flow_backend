@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from django.db import IntegrityError, transaction
 
-from apps.facilities.services.code_generation import generate_unique_code, normalize_code_value
 from apps.practitioners.models import PractitionerCredentialType
 from common.exceptions import ConflictError, NotFoundError, ValidationError
+from common.services.code_generation import generate_code
 
 from ._shared import get_organization, get_user, normalize_country_code, normalize_optional_text
 
@@ -49,18 +49,8 @@ def create_practitioner_credential_type(
     organization = get_organization(organization_id, active_only=True, for_update=True) if organization_id is not None else None
     created_by = get_user(created_by_id, field_label="Creator user", active_only=True) if created_by_id is not None else None
     cleaned_name = name.strip()
-    scoped_queryset = _get_scope_queryset(organization=organization)
 
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Practitioner credential type code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(
-            model=PractitionerCredentialType,
-            source_value=cleaned_name,
-            queryset=scoped_queryset,
-        )
+    normalized_code = generate_code("practitioner_credential_type")
 
     _ensure_unique_scope_values(organization=organization, name=cleaned_name, code=normalized_code)
 
@@ -82,7 +72,7 @@ def create_practitioner_credential_type(
 @transaction.atomic
 def update_practitioner_credential_type(*, credential_type_id, regenerate_code: bool = False, **updates) -> PractitionerCredentialType:
     credential_type = _get_credential_type_for_update(credential_type_id)
-    allowed_fields = {"name", "code", "description", "country_code", "requires_expiry_date", "requires_verification"}
+    allowed_fields = {"name", "description", "country_code", "requires_expiry_date", "requires_verification"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         unexpected = ", ".join(sorted(unexpected_fields))
@@ -94,18 +84,7 @@ def update_practitioner_credential_type(*, credential_type_id, regenerate_code: 
             raise ValidationError("Practitioner credential type name is required.")
         next_name = updates["name"].strip()
 
-    if regenerate_code:
-        next_code = generate_unique_code(
-            model=PractitionerCredentialType,
-            source_value=next_name,
-            queryset=_get_scope_queryset(organization=credential_type.organization).exclude(pk=credential_type.pk),
-        )
-    elif "code" in updates and updates["code"] is not None:
-        next_code = normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Practitioner credential type code cannot be empty.")
-    else:
-        next_code = credential_type.code
+    next_code = credential_type.code
 
     _ensure_unique_scope_values(
         organization=credential_type.organization,

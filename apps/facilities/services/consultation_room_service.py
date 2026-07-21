@@ -14,7 +14,7 @@ from ._shared import (
     require_non_empty_name,
     require_positive_smallint,
 )
-from .code_generation import generate_unique_code, normalize_code_value
+from .code_generation import generate_unique_code
 
 
 @transaction.atomic
@@ -39,12 +39,7 @@ def create_consultation_room(
     normalized_capacity = require_positive_smallint(value=capacity, label="Capacity")
 
     queryset = ConsultationRoom.objects.filter(facility=facility)
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Consultation room code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(model=ConsultationRoom, source_value=cleaned_name, queryset=queryset)
+    normalized_code = generate_unique_code(model=ConsultationRoom, source_value=cleaned_name, queryset=queryset)
 
     if queryset.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Consultation room code already exists in this facility.")
@@ -71,7 +66,7 @@ def update_consultation_room(
     **updates,
 ) -> ConsultationRoom:
     consultation_room = get_consultation_room_for_update(consultation_room_id)
-    allowed_fields = {"facility_id", "department_id", "name", "code", "location_description", "floor", "capacity"}
+    allowed_fields = {"facility_id", "department_id", "name", "location_description", "floor", "capacity"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         raise ValidationError(f"Unsupported consultation room update fields: {', '.join(sorted(unexpected_fields))}.")
@@ -97,14 +92,7 @@ def update_consultation_room(
         next_name = require_non_empty_name(value=updates["name"], label="Consultation room name")
 
     queryset = ConsultationRoom.objects.filter(facility=facility).exclude(pk=consultation_room.pk)
-    if regenerate_code:
-        next_code = generate_unique_code(model=ConsultationRoom, source_value=next_name, queryset=queryset)
-    elif "code" in updates and updates["code"] is not None:
-        next_code = normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Consultation room code cannot be empty.")
-    else:
-        next_code = consultation_room.code
+    next_code = consultation_room.code
 
     if queryset.select_for_update().filter(code=next_code).exists():
         raise ConflictError("Consultation room code already exists in this facility.")

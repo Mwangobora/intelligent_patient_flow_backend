@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 from apps.facilities.models import Facility, FacilityType, Organization
 from common.exceptions import ConflictError, NotFoundError, ValidationError
 
-from .code_generation import generate_unique_code, normalize_code_value
+from .code_generation import generate_unique_code
 
 PHONE_RE = re.compile(r"^\+[1-9][0-9]{7,14}$")
 
@@ -113,16 +113,7 @@ def create_facility(
     _validate_coordinates(latitude, longitude)
 
     scoped_queryset = Facility.objects.filter(organization=organization)
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Facility code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(
-            model=Facility,
-            source_value=name,
-            queryset=scoped_queryset,
-        )
+    normalized_code = generate_unique_code(model=Facility, source_value=name, queryset=scoped_queryset)
     if scoped_queryset.select_for_update().filter(code=normalized_code).exists():
         raise ConflictError("Facility code already exists in this organization.")
 
@@ -166,7 +157,6 @@ def update_facility(
 
     allowed_fields = {
         "name",
-        "code",
         "license_number",
         "email",
         "phone_number",
@@ -229,21 +219,6 @@ def update_facility(
         if not updates["timezone"] or not updates["timezone"].strip():
             raise ValidationError("Facility timezone is required.")
         facility.timezone = updates["timezone"].strip()
-
-    scoped_queryset = Facility.objects.filter(organization=facility.organization)
-    if regenerate_code:
-        facility.code = generate_unique_code(
-            model=Facility,
-            source_value=facility.name,
-            queryset=scoped_queryset.exclude(pk=facility.pk),
-        )
-    elif "code" in updates and updates["code"] is not None:
-        normalized_code = normalize_code_value(updates["code"])
-        if not normalized_code:
-            raise ValidationError("Facility code cannot be empty.")
-        if scoped_queryset.select_for_update().exclude(pk=facility.pk).filter(code=normalized_code).exists():
-            raise ConflictError("Facility code already exists in this organization.")
-        facility.code = normalized_code
 
     if "is_primary" in updates:
         requested_primary = bool(updates["is_primary"])

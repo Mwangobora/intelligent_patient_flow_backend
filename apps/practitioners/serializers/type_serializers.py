@@ -18,17 +18,14 @@ class PractitionerTypeDetailSerializer(PractitionerTypeListSerializer):
 
 class PractitionerTypeCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     requires_license = serializers.BooleanField(required=False, default=False)
 
 
 class PractitionerTypeUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     requires_license = serializers.BooleanField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)
 
 
 class PractitionerCredentialTypeListSerializer(serializers.ModelSerializer):
@@ -58,7 +55,6 @@ class PractitionerCredentialTypeDetailSerializer(PractitionerCredentialTypeListS
 class PractitionerCredentialTypeCreateSerializer(serializers.Serializer):
     organization_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField()
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     country_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     requires_expiry_date = serializers.BooleanField(required=False, default=False)
@@ -67,9 +63,7 @@ class PractitionerCredentialTypeCreateSerializer(serializers.Serializer):
 
 class PractitionerCredentialTypeUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
-    code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     country_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     requires_expiry_date = serializers.BooleanField(required=False)
     requires_verification = serializers.BooleanField(required=False)
-    regenerate_code = serializers.BooleanField(required=False, default=False)

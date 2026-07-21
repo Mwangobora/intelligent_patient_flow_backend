@@ -1,60 +1,11 @@
 from __future__ import annotations
 
-import re
-
 from django.db import IntegrityError, transaction
 
 from apps.accounts.models import Role, User
 from apps.facilities.models import Facility, Organization
 from common.exceptions import ConflictError, NotFoundError, ValidationError
-
-UNSUPPORTED_CODE_CHARS_RE = re.compile(r"[^A-Z0-9_]+")
-SEPARATOR_RE = re.compile(r"[\s\-]+")
-UNDERSCORE_RE = re.compile(r"_+")
-
-
-def _normalize_code_value(value: str) -> str:
-    normalized = SEPARATOR_RE.sub("_", value.strip().upper())
-    normalized = UNSUPPORTED_CODE_CHARS_RE.sub("", normalized)
-    normalized = UNDERSCORE_RE.sub("_", normalized).strip("_")
-    return normalized
-
-
-def _generate_unique_role_code(
-    *,
-    source_value: str,
-    queryset,
-    max_length: int | None = None,
-) -> str:
-    normalized_base = _normalize_code_value(source_value)
-    if not normalized_base:
-        raise ValidationError("A valid non-empty source value is required to generate a role code.")
-
-    if max_length is None:
-        max_length = Role._meta.get_field("code").max_length
-
-    base_code = normalized_base[:max_length].rstrip("_")
-    if not base_code:
-        raise ValidationError("The generated role code is empty after normalization.")
-
-    locked_queryset = queryset.select_for_update()
-    suffix = 1
-    while True:
-        if suffix == 1:
-            candidate = base_code
-        else:
-            suffix_text = f"_{suffix}"
-            trimmed_base = base_code[: max_length - len(suffix_text)].rstrip("_")
-            if not trimmed_base:
-                raise ValidationError("Unable to generate a non-empty unique role code within the field length.")
-            candidate = f"{trimmed_base}{suffix_text}"
-
-        if not candidate:
-            raise ValidationError("Unable to generate a non-empty unique role code.")
-
-        if not locked_queryset.filter(code=candidate).exists():
-            return candidate
-        suffix += 1
+from common.services.code_generation import generate_code
 
 
 def _get_role_for_update(role_id) -> Role:
@@ -138,14 +89,8 @@ def create_role(
 
     cleaned_name = name.strip()
     organization, facility = _resolve_role_scope(organization_id=organization_id, facility_id=facility_id)
-    scoped_queryset = _get_scope_queryset(organization=organization, facility=facility)
 
-    if code is not None:
-        normalized_code = _normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Role code cannot be empty.")
-    else:
-        normalized_code = _generate_unique_role_code(source_value=cleaned_name, queryset=scoped_queryset)
+    normalized_code = generate_code("role")
 
     _ensure_unique_role_scope_values(
         name=cleaned_name,
@@ -178,7 +123,7 @@ def update_role(
 ) -> Role:
     role = _get_role_for_update(role_id)
 
-    allowed_fields = {"name", "code", "description", "organization_id", "facility_id"}
+    allowed_fields = {"name", "description", "organization_id", "facility_id"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         unexpected = ", ".join(sorted(unexpected_fields))
@@ -197,17 +142,7 @@ def update_role(
         facility_id=next_facility_id,
     )
 
-    if regenerate_code:
-        next_code = _generate_unique_role_code(
-            source_value=next_name,
-            queryset=_get_scope_queryset(organization=next_organization, facility=next_facility).exclude(pk=role.pk),
-        )
-    elif "code" in updates and updates["code"] is not None:
-        next_code = _normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Role code cannot be empty.")
-    else:
-        next_code = role.code
+    next_code = role.code
 
     _ensure_unique_role_scope_values(
         name=next_name,

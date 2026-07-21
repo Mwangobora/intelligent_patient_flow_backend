@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from django.db import IntegrityError, transaction
 
-from apps.facilities.services.code_generation import generate_unique_code, normalize_code_value
 from apps.practitioners.models import PractitionerType
 from common.exceptions import ConflictError, NotFoundError, ValidationError
+from common.services.code_generation import generate_code
 
 from ._shared import get_user, normalize_optional_text
 
@@ -40,12 +40,7 @@ def create_practitioner_type(
     cleaned_name = name.strip()
     created_by = get_user(created_by_id, field_label="Creator user") if created_by_id is not None else None
 
-    if code is not None:
-        normalized_code = normalize_code_value(code)
-        if not normalized_code:
-            raise ValidationError("Practitioner type code cannot be empty.")
-    else:
-        normalized_code = generate_unique_code(model=PractitionerType, source_value=cleaned_name)
+    normalized_code = generate_code("practitioner_type")
 
     _ensure_unique_practitioner_type(name=cleaned_name, code=normalized_code)
 
@@ -64,7 +59,7 @@ def create_practitioner_type(
 @transaction.atomic
 def update_practitioner_type(*, practitioner_type_id, regenerate_code: bool = False, **updates) -> PractitionerType:
     practitioner_type = _get_practitioner_type_for_update(practitioner_type_id)
-    allowed_fields = {"name", "code", "description", "requires_license"}
+    allowed_fields = {"name", "description", "requires_license"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         unexpected = ", ".join(sorted(unexpected_fields))
@@ -76,18 +71,7 @@ def update_practitioner_type(*, practitioner_type_id, regenerate_code: bool = Fa
             raise ValidationError("Practitioner type name is required.")
         next_name = updates["name"].strip()
 
-    if regenerate_code:
-        next_code = generate_unique_code(
-            model=PractitionerType,
-            source_value=next_name,
-            queryset=PractitionerType.objects.exclude(pk=practitioner_type.pk),
-        )
-    elif "code" in updates and updates["code"] is not None:
-        next_code = normalize_code_value(updates["code"])
-        if not next_code:
-            raise ValidationError("Practitioner type code cannot be empty.")
-    else:
-        next_code = practitioner_type.code
+    next_code = practitioner_type.code
 
     _ensure_unique_practitioner_type(name=next_name, code=next_code, exclude_id=practitioner_type.pk)
 
