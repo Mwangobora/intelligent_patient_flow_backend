@@ -57,6 +57,33 @@ class PatientMobileProfileUpdateSerializer(serializers.Serializer):
     phone_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
+class PatientMobileAppointmentCreateSerializer(serializers.Serializer):
+    facility_id = serializers.UUIDField()
+    facility_specialty_id = serializers.UUIDField()
+    appointment_slot_id = serializers.UUIDField()
+    scheduled_start = serializers.DateTimeField()
+    scheduled_end = serializers.DateTimeField()
+    reason_for_visit = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class PatientMobileAppointmentRescheduleSerializer(serializers.Serializer):
+    appointment_slot_id = serializers.UUIDField()
+    scheduled_start = serializers.DateTimeField()
+    scheduled_end = serializers.DateTimeField()
+    reason_for_visit = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+
+class PatientMobileAppointmentCancelSerializer(serializers.Serializer):
+    cancellation_reason = serializers.CharField()
+
+
+class PatientMobileAppointmentSlotQuerySerializer(serializers.Serializer):
+    facility_id = serializers.UUIDField()
+    facility_specialty_id = serializers.UUIDField()
+    starts_from = serializers.DateTimeField()
+    ends_to = serializers.DateTimeField()
+
+
 class PatientCreateMobileAccountSerializer(serializers.Serializer):
     email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)

@@ -14,6 +14,8 @@ from apps.checkins._helpers import translate_domain_error
 from apps.checkins.serializers import CheckinOutputSerializer
 from apps.checkins.services import consume_checkin_token, create_appointment_checkin, issue_checkin_token
 from apps.checkins.services._crypto import build_token_hash
+from apps.facilities.selectors import list_facilities, list_facility_specialties
+from apps.facilities.serializers import FacilityListSerializer, FacilitySpecialtyDetailSerializer
 from apps.patients.selectors import (
     PATIENT_QUEUE_HISTORY_STATUSES,
     build_patient_queue_history_payload,
@@ -32,6 +34,10 @@ from apps.patients.serializers import (
     PatientClaimExistingRecordSerializer,
     PatientMobileProfileSerializer,
     PatientMobileProfileUpdateSerializer,
+    PatientMobileAppointmentCancelSerializer,
+    PatientMobileAppointmentCreateSerializer,
+    PatientMobileAppointmentRescheduleSerializer,
+    PatientMobileAppointmentSlotQuerySerializer,
     PatientMobileRegisterSerializer,
     PatientMobileRegistrationResponseSerializer,
     PatientQrConsumeInputSerializer,
@@ -48,6 +54,17 @@ from apps.patients.services.patient_mobile_account_service import (
 )
 from apps.queueing.selectors import list_entries_by_checkin
 from apps.scheduling.models import Appointment
+from apps.scheduling.selectors import (
+    available_slots,
+    get_appointment_status_history,
+    list_appointments,
+)
+from apps.scheduling.serializers import (
+    AppointmentDetailSerializer,
+    AppointmentSlotDetailSerializer,
+    AppointmentStatusHistorySerializer,
+)
+from apps.scheduling.services import cancel_appointment, create_appointment, reschedule_appointment
 
 
 PATIENT_MOBILE_DOCS_TAG = "Patient Mobile"
@@ -195,6 +212,197 @@ class PatientClaimExistingRecordAPIView(APIView):
             )
 
         return Response(PatientClaimExistingRecordResponseSerializer(result).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentListCreateAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: AppointmentDetailSerializer(many=True)})
+    def get(self, request):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        queryset = list_appointments(
+            patient_id=patient.id,
+            status=request.query_params.get("status"),
+            starts_from=request.query_params.get("starts_from"),
+            ends_to=request.query_params.get("ends_to"),
+        )
+        return Response(AppointmentDetailSerializer(queryset, many=True).data)
+
+    @extend_schema(request=PatientMobileAppointmentCreateSerializer, responses={201: AppointmentDetailSerializer})
+    def post(self, request):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        serializer = PatientMobileAppointmentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            appointment = create_appointment(
+                patient_id=patient.id,
+                booking_channel=Appointment.BookingChannel.MOBILE,
+                created_by_id=request.user.id,
+                **serializer.validated_data,
+            )
+        except Exception as exc:
+            translate_domain_error(exc)
+        return Response(AppointmentDetailSerializer(appointment).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentDetailAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    def _get_patient_appointment(self, request, appointment_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return None, _patient_not_found_response()
+        appointment = list_appointments(patient_id=patient.id).filter(pk=appointment_id).first()
+        if appointment is None:
+            return None, Response({"detail": "Appointment not found."}, status=status.HTTP_404_NOT_FOUND)
+        return appointment, None
+
+    @extend_schema(responses={200: AppointmentDetailSerializer})
+    def get(self, request, appointment_id):
+        appointment, error = self._get_patient_appointment(request, appointment_id)
+        if error is not None:
+            return error
+        return Response(AppointmentDetailSerializer(appointment).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentStatusHistoryAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: AppointmentStatusHistorySerializer(many=True)})
+    def get(self, request, appointment_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+        if not list_appointments(patient_id=patient.id).filter(pk=appointment_id).exists():
+            return Response({"detail": "Appointment not found."}, status=status.HTTP_404_NOT_FOUND)
+        history = get_appointment_status_history(appointment_id=appointment_id)
+        return Response(AppointmentStatusHistorySerializer(history, many=True).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentCancelAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(request=PatientMobileAppointmentCancelSerializer, responses={200: AppointmentDetailSerializer})
+    def post(self, request, appointment_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+        if not list_appointments(patient_id=patient.id).filter(pk=appointment_id).exists():
+            return Response({"detail": "Appointment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PatientMobileAppointmentCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            appointment = cancel_appointment(
+                appointment_id=appointment_id,
+                cancelled_by_id=request.user.id,
+                **serializer.validated_data,
+            )
+        except Exception as exc:
+            translate_domain_error(exc)
+        return Response(AppointmentDetailSerializer(appointment).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentRescheduleAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(request=PatientMobileAppointmentRescheduleSerializer, responses={201: AppointmentDetailSerializer})
+    def post(self, request, appointment_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+        if not list_appointments(patient_id=patient.id).filter(pk=appointment_id).exists():
+            return Response({"detail": "Appointment not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PatientMobileAppointmentRescheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            appointment = reschedule_appointment(
+                appointment_id=appointment_id,
+                booking_channel=Appointment.BookingChannel.MOBILE,
+                created_by_id=request.user.id,
+                **serializer.validated_data,
+            )
+        except Exception as exc:
+            translate_domain_error(exc)
+        return Response(AppointmentDetailSerializer(appointment).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientFacilityListAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: FacilityListSerializer(many=True)})
+    def get(self, request):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+        queryset = list_facilities(organization_id=patient.organization_id, is_active=True)
+        return Response(FacilityListSerializer(queryset, many=True).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientFacilitySpecialtyListAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: FacilitySpecialtyDetailSerializer(many=True)})
+    def get(self, request, facility_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+        facilities = list_facilities(organization_id=patient.organization_id, is_active=True).filter(pk=facility_id)
+        if not facilities.exists():
+            return Response({"detail": "Facility not found."}, status=status.HTTP_404_NOT_FOUND)
+        queryset = list_facility_specialties(facility_id=facility_id, is_active=True).filter(accepts_appointments=True)
+        return Response(FacilitySpecialtyDetailSerializer(queryset, many=True).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientAppointmentSlotListAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="facility_id", required=True, type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="facility_specialty_id", required=True, type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="starts_from", required=True, type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="ends_to", required=True, type=str, location=OpenApiParameter.QUERY),
+        ],
+        responses={200: AppointmentSlotDetailSerializer(many=True)},
+    )
+    def get(self, request):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+        serializer = PatientMobileAppointmentSlotQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        facility_id = serializer.validated_data["facility_id"]
+        facility_specialty_id = serializer.validated_data["facility_specialty_id"]
+        if not list_facilities(organization_id=patient.organization_id, is_active=True).filter(pk=facility_id).exists():
+            return Response({"detail": "Facility not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not list_facility_specialties(facility_id=facility_id, is_active=True).filter(
+            pk=facility_specialty_id,
+            accepts_appointments=True,
+        ).exists():
+            return Response({"detail": "Appointment service not found."}, status=status.HTTP_404_NOT_FOUND)
+        queryset = available_slots(
+            facility_id=facility_id,
+            facility_specialty_id=facility_specialty_id,
+            starts_from=serializer.validated_data["starts_from"],
+            ends_to=serializer.validated_data["ends_to"],
+        )
+        return Response(AppointmentSlotDetailSerializer(queryset, many=True).data)
 
 
 @extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
