@@ -7,11 +7,14 @@ from apps.patients.views import (
     PatientAppointmentCheckinAPIView,
     PatientAppointmentQrTokenIssueAPIView,
     PatientCheckinEligibilityAPIView,
+    PatientClaimExistingRecordAPIView,
     PatientCurrentQueueAPIView,
+    PatientMeAPIView,
     PatientIdentifierTypeViewSet,
     PatientIdentifierViewSet,
     PatientQrConsumeAPIView,
     PatientQueueHistoryAPIView,
+    PatientRegisterAPIView,
     PatientRelatedPersonViewSet,
     PatientViewSet,
     RelatedPersonContactViewSet,
@@ -38,6 +41,9 @@ related_person_router = NestedSimpleRouter(router, r"patients/related-persons", 
 related_person_router.register(r"contacts", RelatedPersonContactViewSet, basename="patients-related-person-contacts-nested")
 
 urlpatterns = [
+    path("patient/register/", PatientRegisterAPIView.as_view(), name="patient-register"),
+    path("patient/me/", PatientMeAPIView.as_view(), name="patient-me"),
+    path("patient/claim-existing-record/", PatientClaimExistingRecordAPIView.as_view(), name="patient-claim-existing-record"),
     path("patient/checkins/eligibility/", PatientCheckinEligibilityAPIView.as_view(), name="patient-checkin-eligibility"),
     path(
         "patient/checkins/appointments/<uuid:appointment_id>/check-in/",

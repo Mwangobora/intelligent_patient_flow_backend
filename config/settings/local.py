@@ -3,7 +3,7 @@ from datetime import timedelta
 from .base import *  # noqa: F403
 
 DEBUG = True
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]  # noqa: F405
+ALLOWED_HOSTS = ["*"]  # noqa: F405
 CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS or [  # noqa: F405
     "http://localhost:3000",
     "http://127.0.0.1:3000",

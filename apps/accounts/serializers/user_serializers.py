@@ -80,14 +80,58 @@ class UserDetailSerializer(UserSummarySerializer):
 
 class CurrentUserSerializer(UserSummarySerializer):
     has_global_access = serializers.SerializerMethodField()
+    linked_patient_id = serializers.SerializerMethodField()
+    patient_summary = serializers.SerializerMethodField()
     memberships = MembershipSummarySerializer(many=True, read_only=True)
     permissions = serializers.SerializerMethodField()
 
     class Meta(UserSummarySerializer.Meta):
-        fields = UserSummarySerializer.Meta.fields + ["has_global_access", "memberships", "permissions"]
+        fields = UserSummarySerializer.Meta.fields + [
+            "has_global_access",
+            "linked_patient_id",
+            "patient_summary",
+            "memberships",
+            "permissions",
+        ]
 
     def get_has_global_access(self, obj):
         return bool(obj.is_superuser)
+
+    def get_linked_patient_id(self, obj):
+        patient = self._get_linked_patient(obj)
+        return str(patient.id) if patient else None
+
+    def get_patient_summary(self, obj):
+        patient = self._get_linked_patient(obj)
+        if patient is None:
+            return None
+        return {
+            "id": patient.id,
+            "patient_number": patient.patient_number,
+            "first_name": patient.first_name,
+            "middle_name": patient.middle_name,
+            "last_name": patient.last_name,
+            "registered_facility": patient.registered_facility_id,
+            "registered_facility_name": patient.registered_facility.name if patient.registered_facility else None,
+            "organization": patient.organization_id,
+            "organization_name": patient.organization.name,
+            "is_active": patient.is_active,
+        }
+
+    def _get_linked_patient(self, obj):
+        if hasattr(obj, "_current_serializer_patient"):
+            return obj._current_serializer_patient
+
+        from apps.patients.models import Patient
+
+        patient = (
+            Patient.objects.select_related("organization", "registered_facility")
+            .filter(user=obj, is_active=True)
+            .order_by("created_at")
+            .first()
+        )
+        obj._current_serializer_patient = patient
+        return patient
 
     def get_permissions(self, obj):
         from apps.accounts.selectors.permission_selectors import get_user_effective_permissions

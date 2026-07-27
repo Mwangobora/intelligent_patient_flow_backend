@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.permissions import IsAuthenticatedActive
+from apps.accounts.views._auth_cookies import set_auth_cookies
 from apps.checkins.models import CheckinToken
 from apps.checkins._helpers import translate_domain_error
 from apps.checkins.serializers import CheckinOutputSerializer
@@ -25,10 +28,23 @@ from apps.patients.serializers import (
     PatientAppointmentCheckinResponseSerializer,
     PatientCheckinEligibilityQuerySerializer,
     PatientCheckinEligibilitySerializer,
+    PatientClaimExistingRecordResponseSerializer,
+    PatientClaimExistingRecordSerializer,
+    PatientMobileProfileSerializer,
+    PatientMobileProfileUpdateSerializer,
+    PatientMobileRegisterSerializer,
+    PatientMobileRegistrationResponseSerializer,
     PatientQrConsumeInputSerializer,
     PatientQrTokenIssueResponseSerializer,
     PatientQueueCurrentSerializer,
     PatientQueueHistoryResponseSerializer,
+)
+from apps.patients.services.patient_mobile_account_service import (
+    _safe_patient_summary,
+    claim_existing_patient_record,
+    get_patient_for_user,
+    register_mobile_patient,
+    update_current_patient_profile,
 )
 from apps.queueing.selectors import list_entries_by_checkin
 from apps.scheduling.models import Appointment
@@ -39,6 +55,18 @@ PATIENT_MOBILE_DOCS_TAG = "Patient Mobile"
 
 def _patient_not_found_response() -> Response:
     return Response({"detail": "Patient profile was not found for this account."}, status=status.HTTP_404_NOT_FOUND)
+
+
+def _user_summary(user) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "phone_number": user.phone_number,
+        "first_name": user.first_name,
+        "middle_name": user.middle_name,
+        "last_name": user.last_name,
+        "is_active": user.is_active,
+    }
 
 
 def _appointment_payload(eligibility) -> dict:
@@ -72,6 +100,101 @@ def _appointment_payload(eligibility) -> dict:
         "has_active_token": eligibility.active_token is not None,
         "token_expires_at": eligibility.active_token.expires_at if eligibility.active_token else None,
     }
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientRegisterAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        request=PatientMobileRegisterSerializer,
+        responses={201: PatientMobileRegistrationResponseSerializer},
+    )
+    def post(self, request):
+        serializer = PatientMobileRegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user, patient = register_mobile_patient(**serializer.validated_data)
+        except Exception as exc:
+            translate_domain_error(exc)
+
+        refresh = RefreshToken.for_user(user)
+        response = Response(
+            PatientMobileRegistrationResponseSerializer(
+                {"user": _user_summary(user), "patient": _safe_patient_summary(patient)}
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+        return set_auth_cookies(
+            response=response,
+            access_token=str(refresh.access_token),
+            refresh_token=str(refresh),
+        )
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientMeAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: PatientMobileProfileSerializer})
+    def get(self, request):
+        try:
+            patient = get_patient_for_user(request.user)
+        except Exception as exc:
+            translate_domain_error(exc)
+        return Response(PatientMobileProfileSerializer(_safe_patient_summary(patient)).data)
+
+    @extend_schema(request=PatientMobileProfileUpdateSerializer, responses={200: PatientMobileProfileSerializer})
+    def patch(self, request):
+        serializer = PatientMobileProfileUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            patient = update_current_patient_profile(user=request.user, **serializer.validated_data)
+        except Exception as exc:
+            translate_domain_error(exc)
+        return Response(PatientMobileProfileSerializer(_safe_patient_summary(patient)).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientClaimExistingRecordAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        request=PatientClaimExistingRecordSerializer,
+        responses={200: PatientClaimExistingRecordResponseSerializer},
+    )
+    def post(self, request):
+        serializer = PatientClaimExistingRecordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = claim_existing_patient_record(**serializer.validated_data)
+        except Exception as exc:
+            translate_domain_error(exc)
+
+        if result.get("status") == "linked":
+            user = result["user"]
+            patient = result["patient"]
+            refresh = RefreshToken.for_user(user)
+            response = Response(
+                PatientClaimExistingRecordResponseSerializer(
+                    {
+                        "status": result["status"],
+                        "message": result["message"],
+                        "user": _user_summary(user),
+                        "patient": _safe_patient_summary(patient),
+                    }
+                ).data
+            )
+            return set_auth_cookies(
+                response=response,
+                access_token=str(refresh.access_token),
+                refresh_token=str(refresh),
+            )
+
+        return Response(PatientClaimExistingRecordResponseSerializer(result).data)
 
 
 @extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])

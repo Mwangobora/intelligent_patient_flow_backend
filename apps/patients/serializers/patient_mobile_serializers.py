@@ -3,6 +3,86 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.checkins.serializers import CheckinOutputSerializer
+from apps.patients.models import Patient
+
+
+class PatientMobileRegisterSerializer(serializers.Serializer):
+    first_name = serializers.CharField()
+    middle_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    last_name = serializers.CharField()
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+    date_of_birth_is_estimated = serializers.BooleanField(required=False, default=False)
+    sex_code = serializers.ChoiceField(choices=Patient.SexCode.choices, required=False, allow_null=True)
+    email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    password = serializers.CharField(write_only=True)
+    password_confirm = serializers.CharField(write_only=True)
+
+
+class PatientMobileUserSummarySerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    email = serializers.EmailField(allow_null=True)
+    phone_number = serializers.CharField(allow_null=True)
+    first_name = serializers.CharField()
+    middle_name = serializers.CharField(allow_null=True)
+    last_name = serializers.CharField()
+    is_active = serializers.BooleanField()
+
+
+class PatientMobileProfileSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    patient_number = serializers.CharField()
+    first_name = serializers.CharField()
+    middle_name = serializers.CharField(allow_null=True)
+    last_name = serializers.CharField()
+    date_of_birth = serializers.DateField(allow_null=True)
+    date_of_birth_is_estimated = serializers.BooleanField()
+    sex_code = serializers.CharField(allow_null=True)
+    email = serializers.EmailField(allow_null=True)
+    phone_number = serializers.CharField(allow_null=True)
+    organization = serializers.UUIDField()
+    organization_name = serializers.CharField()
+    registered_facility = serializers.UUIDField(allow_null=True)
+    registered_facility_name = serializers.CharField(allow_null=True)
+    is_active = serializers.BooleanField()
+
+
+class PatientMobileRegistrationResponseSerializer(serializers.Serializer):
+    user = PatientMobileUserSummarySerializer()
+    patient = PatientMobileProfileSerializer()
+
+
+class PatientMobileProfileUpdateSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+
+class PatientCreateMobileAccountSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    temporary_password = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+
+
+class PatientMobileAccountCreatedSerializer(serializers.Serializer):
+    user = PatientMobileUserSummarySerializer()
+    patient = PatientMobileProfileSerializer()
+    temporary_password = serializers.CharField()
+    generated_password = serializers.BooleanField()
+
+
+class PatientClaimExistingRecordSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+    date_of_birth = serializers.DateField()
+    patient_number = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    password = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+    password_confirm = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+
+
+class PatientClaimExistingRecordResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    message = serializers.CharField()
+    user = PatientMobileUserSummarySerializer(required=False)
+    patient = PatientMobileProfileSerializer(required=False)
 
 
 class PatientAppointmentSummarySerializer(serializers.Serializer):

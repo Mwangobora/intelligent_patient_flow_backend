@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.accounts.models import User
 from apps.checkins.models import PatientCheckin
 from apps.checkins.services import issue_checkin_token
 from apps.checkins.services._crypto import build_token_hash
@@ -13,6 +14,23 @@ from apps.facilities.models import Department, FacilitySpecialty, ServicePoint, 
 from apps.patients.models import Patient
 from apps.queueing.models import Queue, QueueEntry
 from apps.scheduling.models import Appointment
+
+
+def _registration_payload(**overrides):
+    payload = {
+        "first_name": "Asha",
+        "middle_name": "Neema",
+        "last_name": "Mushi",
+        "date_of_birth": "1994-05-12",
+        "date_of_birth_is_estimated": False,
+        "sex_code": "female",
+        "email": "asha.mobile@example.com",
+        "phone_number": "0755123456",
+        "password": "StrongPass123!",
+        "password_confirm": "StrongPass123!",
+    }
+    payload.update(overrides)
+    return payload
 
 
 @pytest.fixture
@@ -93,6 +111,195 @@ def _create_checkin(*, patient, facility, appointment=None, facility_specialty=N
         checkin_method=PatientCheckin.CheckinMethod.MOBILE,
         checked_in_at=timezone.now() - timedelta(minutes=5),
     )
+
+
+@pytest.mark.django_db
+def test_mobile_patient_registration_creates_user_and_patient(api_client, facility):
+    response = api_client.post(reverse("patient-register"), _registration_payload(), format="json")
+
+    assert response.status_code == 201
+    assert response.data["user"]["email"] == "asha.mobile@example.com"
+    assert response.data["user"]["phone_number"] == "+255755123456"
+    assert response.data["patient"]["patient_number"]
+    assert response.data["patient"]["registered_facility"] == str(facility.id)
+
+    user = User.objects.get(email="asha.mobile@example.com")
+    patient = Patient.objects.get(user=user)
+    assert patient.user_id == user.id
+    assert user.check_password("StrongPass123!")
+    assert "access_token" in response.cookies
+    assert response.cookies["access_token"]["httponly"]
+
+
+@pytest.mark.django_db
+def test_registered_mobile_patient_can_login(api_client, facility):
+    api_client.post(reverse("patient-register"), _registration_payload(), format="json")
+
+    response = api_client.post(
+        reverse("auth-login"),
+        {"email_or_phone": "asha.mobile@example.com", "password": "StrongPass123!"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["user"]["linked_patient_id"] is not None
+    assert response.data["user"]["patient_summary"]["patient_number"]
+
+
+@pytest.mark.django_db
+def test_auth_me_returns_linked_patient_summary(patient_mobile_client, patient_with_user):
+    response = patient_mobile_client.get(reverse("auth-me"))
+
+    assert response.status_code == 200
+    assert response.data["linked_patient_id"] == str(patient_with_user.id)
+    assert response.data["patient_summary"]["patient_number"] == patient_with_user.patient_number
+
+
+@pytest.mark.django_db
+def test_patient_me_returns_only_own_profile(patient_mobile_client, patient_with_user):
+    response = patient_mobile_client.get(reverse("patient-me"))
+
+    assert response.status_code == 200
+    assert response.data["id"] == str(patient_with_user.id)
+    assert response.data["patient_number"] == patient_with_user.patient_number
+
+
+@pytest.mark.django_db
+def test_patient_me_can_update_safe_contact_fields(patient_mobile_client, patient_with_user):
+    response = patient_mobile_client.patch(
+        reverse("patient-me"),
+        {"email": "updated.mobile@example.com", "phone_number": "0744123456"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["email"] == "updated.mobile@example.com"
+    assert response.data["phone_number"] == "+255744123456"
+    patient_with_user.refresh_from_db()
+    assert patient_with_user.user.email == "updated.mobile@example.com"
+    assert patient_with_user.user.phone_number == "+255744123456"
+
+
+@pytest.mark.django_db
+def test_patient_me_does_not_allow_organization_or_status_changes(patient_mobile_client, patient_with_user):
+    response = patient_mobile_client.patch(
+        reverse("patient-me"),
+        {"organization_id": "00000000-0000-0000-0000-000000000000", "is_active": False},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    patient_with_user.refresh_from_db()
+    assert patient_with_user.is_active is True
+
+
+@pytest.mark.django_db
+def test_staff_can_create_mobile_account_for_existing_patient(
+    authenticated_client,
+    user_factory,
+    grant_system_permission,
+    patient,
+):
+    staff_user = user_factory(email="staff.mobile@example.com", phone_number="+255700001001")
+    grant_system_permission(
+        user=staff_user,
+        permission_code="patients_patient.update",
+        scope="organization",
+        organization=patient.organization,
+    )
+    client = authenticated_client(staff_user)
+
+    response = client.post(
+        reverse("patients-detail", kwargs={"pk": patient.id}) + "create-mobile-account/",
+        {"email": "linked.patient@example.com", "phone_number": "0755333444"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["temporary_password"]
+    patient.refresh_from_db()
+    assert patient.user is not None
+    assert patient.user.email == "linked.patient@example.com"
+
+
+@pytest.mark.django_db
+def test_staff_cannot_create_mobile_account_twice(authenticated_client, user_factory, grant_system_permission, patient):
+    staff_user = user_factory(email="staff.twice@example.com", phone_number="+255700001002")
+    grant_system_permission(
+        user=staff_user,
+        permission_code="patients_patient.update",
+        scope="organization",
+        organization=patient.organization,
+    )
+    client = authenticated_client(staff_user)
+    url = reverse("patients-detail", kwargs={"pk": patient.id}) + "create-mobile-account/"
+    client.post(url, {"email": "twice.patient@example.com", "phone_number": "0755666777"}, format="json")
+
+    response = client.post(url, {"email": "twice2.patient@example.com", "phone_number": "0755666888"}, format="json")
+
+    assert response.status_code == 400
+    assert "already has a linked mobile account" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_mobile_registration_blocks_duplicate_email_or_phone(api_client, facility, patient_user):
+    response = api_client.post(
+        reverse("patient-register"),
+        _registration_payload(email=patient_user.email, phone_number="0755123457"),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "email already exists" in str(response.data)
+
+
+@pytest.mark.django_db
+def test_claim_existing_record_links_when_verified_with_password(api_client, patient):
+    patient.date_of_birth = date(1994, 5, 12)
+    patient.save(update_fields=["date_of_birth", "updated_at"])
+
+    response = api_client.post(
+        reverse("patient-claim-existing-record"),
+        {
+            "phone_number": "0712345678",
+            "date_of_birth": patient.date_of_birth.isoformat(),
+            "patient_number": patient.patient_number,
+            "password": "ClaimPass123!",
+            "password_confirm": "ClaimPass123!",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "linked"
+    patient.refresh_from_db()
+    assert patient.user is not None
+    assert patient.user.check_password("ClaimPass123!")
+
+
+@pytest.mark.django_db
+def test_claim_existing_record_does_not_leak_when_no_or_multiple_matches(api_client, organization, facility, patient):
+    patient.date_of_birth = date(1994, 5, 12)
+    patient.save(update_fields=["date_of_birth", "updated_at"])
+    Patient.objects.create(
+        organization=organization,
+        registered_facility=facility,
+        patient_number="PAT-CLAIM-SECOND",
+        first_name="Second",
+        last_name="Claim",
+        date_of_birth=patient.date_of_birth,
+        phone_number=patient.phone_number,
+    )
+
+    response = api_client.post(
+        reverse("patient-claim-existing-record"),
+        {"phone_number": patient.phone_number, "date_of_birth": patient.date_of_birth.isoformat()},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "verification_required"
+    assert "patient" not in response.data
 
 
 @pytest.mark.django_db

@@ -7,9 +7,12 @@ from .patient_mobile_views import (
     PatientAppointmentCheckinAPIView,
     PatientAppointmentQrTokenIssueAPIView,
     PatientCheckinEligibilityAPIView,
+    PatientClaimExistingRecordAPIView,
     PatientCurrentQueueAPIView,
+    PatientMeAPIView,
     PatientQrConsumeAPIView,
     PatientQueueHistoryAPIView,
+    PatientRegisterAPIView,
 )
 from .relationship_views import RelatedPersonContactViewSet, RelationshipTypeViewSet, PatientRelatedPersonViewSet
 
@@ -21,11 +24,14 @@ __all__ = [
     "PatientAppointmentCheckinAPIView",
     "PatientAppointmentQrTokenIssueAPIView",
     "PatientCheckinEligibilityAPIView",
+    "PatientClaimExistingRecordAPIView",
     "PatientCurrentQueueAPIView",
+    "PatientMeAPIView",
     "PatientQrConsumeAPIView",
     "PatientIdentifierTypeViewSet",
     "PatientIdentifierViewSet",
     "PatientQueueHistoryAPIView",
+    "PatientRegisterAPIView",
     "PatientRelatedPersonViewSet",
     "PatientViewSet",
     "PatientsBaseViewSet",
