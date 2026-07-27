@@ -41,6 +41,8 @@ class RoleAssignmentSummarySerializer(serializers.ModelSerializer):
 
 
 class UserSummarySerializer(serializers.ModelSerializer):
+    profile_picture_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -51,10 +53,18 @@ class UserSummarySerializer(serializers.ModelSerializer):
             "middle_name",
             "last_name",
             "is_active",
+            "profile_picture_url",
             "email_verified_at",
             "phone_verified_at",
             "date_joined",
         ]
+
+    def get_profile_picture_url(self, obj):
+        if not obj.profile_picture:
+            return None
+        request = self.context.get("request")
+        url = obj.profile_picture.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class UserListSerializer(UserSummarySerializer):
@@ -160,3 +170,14 @@ class MeUpdateSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False)
     middle_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     last_name = serializers.CharField(required=False)
+    profile_picture = serializers.FileField(required=False, allow_null=True)
+
+    def validate_profile_picture(self, value):
+        if value is None:
+            return value
+        if value.size > 2 * 1024 * 1024:
+            raise serializers.ValidationError("Profile picture must be 2 MB or smaller.")
+        content_type = getattr(value, "content_type", "")
+        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+            raise serializers.ValidationError("Upload a JPEG, PNG, or WebP image.")
+        return value

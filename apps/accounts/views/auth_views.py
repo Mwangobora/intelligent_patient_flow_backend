@@ -3,6 +3,7 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -27,6 +28,7 @@ from ._helpers import translate_domain_error
 @extend_schema(tags=["Auth APIs"])
 class AuthViewSet(viewsets.GenericViewSet):
     serializer_class = CurrentUserSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
         if self.action in {"login", "refresh"}:
@@ -47,7 +49,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         refresh = RefreshToken.for_user(user)
         response = Response(
             {
-                "user": CurrentUserSerializer(user).data,
+                "user": CurrentUserSerializer(user, context={"request": request}).data,
             }
         )
         return set_auth_cookies(
@@ -88,7 +90,7 @@ class AuthViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):
         if request.method == "GET":
-            return Response(CurrentUserSerializer(request.user).data)
+            return Response(CurrentUserSerializer(request.user, context={"request": request}).data)
 
         serializer = MeUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -96,7 +98,7 @@ class AuthViewSet(viewsets.GenericViewSet):
             user = update_user(user_id=request.user.id, **serializer.validated_data)
         except Exception as exc:
             translate_domain_error(exc)
-        return Response(CurrentUserSerializer(user).data)
+        return Response(CurrentUserSerializer(user, context={"request": request}).data)
 
     @action(detail=False, methods=["post"], url_path="change-password")
     def change_password(self, request):

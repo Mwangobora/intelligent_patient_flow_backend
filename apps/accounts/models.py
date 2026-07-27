@@ -10,6 +10,12 @@ from django.utils import timezone
 from apps.facilities.models import Facility, Organization
 from common.db import ActiveModel, TimeStampedModel
 
+
+def user_profile_picture_upload_to(instance, filename: str) -> str:
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
+    return f"profile-pictures/users/{instance.pk}.{extension}"
+
+
 phone_validator = RegexValidator(
     regex=r"^\+[1-9][0-9]{7,14}$",
     message="Phone number must be in E.164 format, for example +2557656765456.",
@@ -98,6 +104,7 @@ class User(TimeStampedModel, AbstractBaseUser):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)
+    profile_picture = models.FileField(upload_to=user_profile_picture_upload_to, null=True, blank=True)
     date_joined = models.DateTimeField(default=timezone.now)
 
     objects = UserManager()

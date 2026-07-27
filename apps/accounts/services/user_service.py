@@ -130,7 +130,7 @@ def update_user(
 ) -> User:
     user = _get_user_for_update(user_id)
 
-    allowed_fields = {"email", "phone_number", "first_name", "middle_name", "last_name"}
+    allowed_fields = {"email", "phone_number", "first_name", "middle_name", "last_name", "profile_picture"}
     unexpected_fields = set(updates) - allowed_fields
     if unexpected_fields:
         unexpected = ", ".join(sorted(unexpected_fields))
@@ -156,6 +156,16 @@ def update_user(
         if not updates["last_name"] or not updates["last_name"].strip():
             raise ValidationError("Last name is required.")
         user.last_name = updates["last_name"].strip()
+
+    if "profile_picture" in updates:
+        if updates["profile_picture"] is None:
+            if user.profile_picture:
+                user.profile_picture.delete(save=False)
+            user.profile_picture = None
+        elif updates["profile_picture"]:
+            if user.profile_picture:
+                user.profile_picture.delete(save=False)
+            user.profile_picture = updates["profile_picture"]
 
     if not next_email and not next_phone_number:
         raise ValidationError("At least one of email or phone_number is required.")
