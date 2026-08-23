@@ -22,6 +22,7 @@ ENVIRONMENT = os.getenv("APP_ENV", os.getenv("DJANGO_ENVIRONMENT", "local"))
 
 INSTALLED_APPS = [
     "channels",
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",

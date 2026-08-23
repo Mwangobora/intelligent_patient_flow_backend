@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.queueing.models import Queue, QueueEntry, QueueEntryEvent, QueueTransfer
 from common.exceptions import ConflictError, ValidationError
 
+from ..realtime import broadcast_queue_entry_update
 from ._shared import get_queue, get_queue_entry, get_user, normalize_optional_text, validate_checkin_for_queue
 from .queue_entry_event_service import record_queue_event
 from .queue_entry_service import create_queue_entry
@@ -72,12 +73,14 @@ def transfer_queue_entry(
     )
 
     try:
-        return QueueTransfer.objects.create(
+        transfer = QueueTransfer.objects.create(
             source_queue_entry=source_entry,
             destination_queue_entry=destination_entry,
             transferred_by=transferred_by,
             transfer_reason=reason,
             transferred_at=transfer_time,
         )
+        broadcast_queue_entry_update(queue_entry_id=source_entry.id, event="transferred")
+        return transfer
     except IntegrityError as exc:
         raise ConflictError("Queue transfer could not be created because a conflicting transfer already exists.") from exc

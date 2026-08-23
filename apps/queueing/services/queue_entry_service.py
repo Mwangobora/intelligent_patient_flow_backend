@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.queueing.models import Queue, QueueEntry, QueueEntryEvent
 from common.exceptions import ConflictError, ValidationError
 
+from ..realtime import broadcast_queue_entry_update
 from ._shared import (
     ACTIVE_QUEUE_ENTRY_STATUSES,
     TERMINAL_QUEUE_ENTRY_STATUSES,
@@ -105,6 +106,7 @@ def create_queue_entry(
     if mark_appointment_status:
         _mark_appointment_queued(entry=entry, changed_by_id=created_by_id)
     entry.refresh_from_db()
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="joined")
     return entry
 
 
@@ -129,6 +131,7 @@ def call_queue_entry(*, queue_entry_id, performed_by_id=None, called_at=None) ->
         performed_by_id=performed_by_id,
         occurred_at=event_time,
     )
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="called")
     return entry
 
 
@@ -148,6 +151,7 @@ def recall_queue_entry(*, queue_entry_id, performed_by_id=None, recalled_at=None
         performed_by_id=performed_by_id,
         occurred_at=event_time,
     )
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="recalled")
     return entry
 
 
@@ -168,6 +172,7 @@ def skip_queue_entry(*, queue_entry_id, performed_by_id=None, reason: str | None
         reason=reason,
         occurred_at=event_time,
     )
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="skipped")
     return entry
 
 
@@ -195,6 +200,7 @@ def start_service(*, queue_entry_id, performed_by_id=None, started_at=None, allo
         occurred_at=event_time,
     )
     _mark_appointment_in_service(entry=entry, changed_by_id=performed_by_id)
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="service_started")
     return entry
 
 
@@ -219,6 +225,7 @@ def complete_service(*, queue_entry_id, performed_by_id=None, completed_at=None)
         occurred_at=event_time,
     )
     _mark_appointment_completed(entry=entry, changed_by_id=performed_by_id)
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="service_completed")
     return entry
 
 
@@ -249,6 +256,7 @@ def cancel_queue_entry(*, queue_entry_id, cancelled_by_id, cancellation_reason: 
         reason=reason,
         occurred_at=event_time,
     )
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="cancelled")
     return entry
 
 
@@ -271,4 +279,5 @@ def change_priority(*, queue_entry_id, priority_level: int, priority_reason: str
         performed_by_id=performed_by_id,
         reason=reason,
     )
+    broadcast_queue_entry_update(queue_entry_id=entry.id, event="priority_changed")
     return entry

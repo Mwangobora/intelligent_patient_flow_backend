@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.queueing.models import Queue
 from common.exceptions import ConflictError, ValidationError
 
+from ..realtime import broadcast_queue_update
 from ._shared import (
     facility_local_date,
     get_facility_specialty,
@@ -28,12 +29,14 @@ def create_queue(*, service_point_id, queue_date=None, facility_specialty_id=Non
     validate_service_point_specialty_scope(service_point=service_point, facility_specialty=facility_specialty)
 
     try:
-        return Queue.objects.create(
+        queue = Queue.objects.create(
             service_point=service_point,
             facility_specialty=facility_specialty,
             queue_date=queue_date or facility_local_date(service_point.facility),
             created_by=created_by,
         )
+        broadcast_queue_update(queue_id=queue.id, event="created")
+        return queue
     except IntegrityError as exc:
         raise ConflictError("Queue already exists for this service point, specialty, and date.") from exc
 
@@ -56,6 +59,7 @@ def open_queue(*, queue_id, opened_by_id=None, opened_at=None) -> Queue:
     queue.closed_at = None
     queue.closed_by = None
     queue.save(update_fields=["status", "opened_at", "opened_by", "paused_at", "closed_at", "closed_by", "updated_at"])
+    broadcast_queue_update(queue_id=queue.id, event="opened")
     return queue
 
 
@@ -67,6 +71,7 @@ def pause_queue(*, queue_id, paused_at=None) -> Queue:
     queue.status = Queue.Status.PAUSED
     queue.paused_at = paused_at or timezone.now()
     queue.save(update_fields=["status", "paused_at", "updated_at"])
+    broadcast_queue_update(queue_id=queue.id, event="paused")
     return queue
 
 
@@ -78,6 +83,7 @@ def resume_queue(*, queue_id) -> Queue:
     queue.status = Queue.Status.OPEN
     queue.paused_at = None
     queue.save(update_fields=["status", "paused_at", "updated_at"])
+    broadcast_queue_update(queue_id=queue.id, event="resumed")
     return queue
 
 
@@ -96,6 +102,7 @@ def close_queue(*, queue_id, closed_by_id, closed_at=None) -> Queue:
     queue.closed_at = closed_at or timezone.now()
     queue.closed_by = closed_by
     queue.save(update_fields=["status", "closed_at", "closed_by", "updated_at"])
+    broadcast_queue_update(queue_id=queue.id, event="closed")
     return queue
 
 
@@ -108,4 +115,5 @@ def cancel_queue(*, queue_id) -> Queue:
         return queue
     queue.status = Queue.Status.CANCELLED
     queue.save(update_fields=["status", "updated_at"])
+    broadcast_queue_update(queue_id=queue.id, event="cancelled")
     return queue
