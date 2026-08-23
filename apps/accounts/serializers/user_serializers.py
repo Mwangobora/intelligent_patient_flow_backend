@@ -109,6 +109,7 @@ class CurrentUserSerializer(UserSummarySerializer):
     linked_patient_id = serializers.SerializerMethodField()
     patient_summary = serializers.SerializerMethodField()
     memberships = MembershipSummarySerializer(many=True, read_only=True)
+    role_assignments = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
 
     class Meta(UserSummarySerializer.Meta):
@@ -117,6 +118,7 @@ class CurrentUserSerializer(UserSummarySerializer):
             "linked_patient_id",
             "patient_summary",
             "memberships",
+            "role_assignments",
             "permissions",
         ]
 
@@ -163,6 +165,12 @@ class CurrentUserSerializer(UserSummarySerializer):
         from apps.accounts.selectors.permission_selectors import get_user_effective_permissions
 
         return list(get_user_effective_permissions(user=obj).values_list("code", flat=True))
+
+    def get_role_assignments(self, obj):
+        from apps.accounts.selectors import get_user_role_assignments
+
+        assignments = get_user_role_assignments(user_id=obj.id, is_active=True)
+        return RoleAssignmentSummarySerializer(assignments, many=True).data
 
 
 class UserCreateSerializer(serializers.Serializer):

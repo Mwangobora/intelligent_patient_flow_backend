@@ -136,6 +136,26 @@ def test_authenticated_user_can_access_auth_me_using_cookie(api_client, user_fac
 
 
 @pytest.mark.django_db
+def test_auth_me_includes_active_role_assignments(authenticated_client, user_factory, grant_system_permission, organization, facility):
+    user = user_factory(email="role-profile@example.com")
+    grant = grant_system_permission(
+        user=user,
+        permission_code="patients_patient.view",
+        scope="facility",
+        organization=organization,
+        facility=facility,
+    )
+    client = authenticated_client(user)
+
+    response = client.get(reverse("auth-me"))
+
+    assert response.status_code == 200
+    assert response.data["role_assignments"][0]["id"] == str(grant["assignment"].id)
+    assert response.data["role_assignments"][0]["role_name"] == grant["role"].name
+    assert response.data["role_assignments"][0]["role_facility_name"] == facility.name
+
+
+@pytest.mark.django_db
 def test_authenticated_user_can_update_own_names(authenticated_client, user_factory):
     user = user_factory(email="update-me@example.com")
     client = authenticated_client(user)
