@@ -161,10 +161,12 @@ class PatientQrConsumeInputSerializer(serializers.Serializer):
 
 class PatientQueueCurrentSerializer(serializers.Serializer):
     queue_entry_id = serializers.UUIDField(allow_null=True)
+    queue_id = serializers.UUIDField(allow_null=True)
     queue_number = serializers.CharField(allow_null=True)
     queue_name = serializers.CharField(allow_null=True)
     service_point = serializers.DictField(allow_null=True)
     facility = serializers.DictField(allow_null=True)
+    queue_status = serializers.CharField(allow_null=True)
     status = serializers.CharField(allow_null=True)
     priority_label = serializers.CharField(allow_null=True)
     estimated_wait_minutes = serializers.IntegerField(allow_null=True)

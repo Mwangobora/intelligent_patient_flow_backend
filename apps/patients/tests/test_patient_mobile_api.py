@@ -509,7 +509,11 @@ def test_patient_can_view_own_current_queue(patient_mobile_client, patient_with_
 
     assert response.status_code == 200
     assert response.data["queue_entry_id"] == str(entry.id)
+    assert response.data["queue_id"] == str(open_queue.id)
+    assert response.data["queue_status"] == Queue.Status.OPEN
     assert response.data["queue_number"] == "OPD-001"
+    assert response.data["service_point"]["name"] == "OPD Desk"
+    assert response.data["service_point"]["type_name"] == "Reception Desk"
     assert "patient_name" not in response.data
 
 
@@ -553,6 +557,7 @@ def test_empty_current_queue_returns_clean_response(patient_mobile_client, patie
 
     assert response.status_code == 200
     assert response.data["queue_entry_id"] is None
+    assert response.data["queue_id"] is None
     assert response.data["status"] is None
 
 

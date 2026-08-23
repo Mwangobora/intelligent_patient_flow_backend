@@ -328,13 +328,34 @@ def test_transfer_creates_destination_and_marks_source_transferred(authenticated
 
 
 @pytest.mark.django_db
-def test_transfer_cannot_happen_from_in_service_completed_cancelled_or_transferred(authenticated_client, checkin_factory, grant_system_permission, open_queue, organization, second_open_queue, user_factory):
+def test_transfer_can_happen_from_in_service_to_lab_or_pharmacy_queue(authenticated_client, checkin_factory, grant_system_permission, open_queue, organization, second_open_queue, user_factory):
     user = user_factory()
     grant_queue_permissions(user, grant_system_permission, organization, "queueing_entry.create", "queueing_entry.call", "queueing_entry.start_service", "queueing_entry.transfer")
     client = authenticated_client(user)
     entry = client.post(reverse("queueing-entries-list"), entry_payload(open_queue, checkin_factory()), format="json")
     client.post(reverse("queueing-entries-call", kwargs={"pk": entry.data["id"]}), format="json")
     client.post(reverse("queueing-entries-start-service", kwargs={"pk": entry.data["id"]}), format="json")
+
+    response = client.post(
+        reverse("queueing-entries-transfer", kwargs={"pk": entry.data["id"]}),
+        {"destination_queue_id": str(second_open_queue.id), "transfer_reason": "Send to laboratory"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert QueueEntry.objects.get(pk=entry.data["id"]).status == QueueEntry.Status.TRANSFERRED
+    assert QueueEntry.objects.get(pk=response.data["destination_queue_entry"]).status == QueueEntry.Status.WAITING
+
+
+@pytest.mark.django_db
+def test_transfer_cannot_happen_from_terminal_status(authenticated_client, checkin_factory, grant_system_permission, open_queue, organization, second_open_queue, user_factory):
+    user = user_factory()
+    grant_queue_permissions(user, grant_system_permission, organization, "queueing_entry.create", "queueing_entry.call", "queueing_entry.start_service", "queueing_entry.complete_service", "queueing_entry.transfer")
+    client = authenticated_client(user)
+    entry = client.post(reverse("queueing-entries-list"), entry_payload(open_queue, checkin_factory()), format="json")
+    client.post(reverse("queueing-entries-call", kwargs={"pk": entry.data["id"]}), format="json")
+    client.post(reverse("queueing-entries-start-service", kwargs={"pk": entry.data["id"]}), format="json")
+    client.post(reverse("queueing-entries-complete-service", kwargs={"pk": entry.data["id"]}), format="json")
 
     response = client.post(
         reverse("queueing-entries-transfer", kwargs={"pk": entry.data["id"]}),

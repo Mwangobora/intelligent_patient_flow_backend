@@ -58,6 +58,7 @@ def create_queue_entry(
     priority_reason: str | None = None,
     joined_at=None,
     created_by_id=None,
+    mark_appointment_status: bool = True,
 ) -> QueueEntry:
     queue = get_queue(queue_id, for_update=True)
     if queue.status != Queue.Status.OPEN:
@@ -101,7 +102,8 @@ def create_queue_entry(
         performed_by_id=created_by_id,
         occurred_at=join_time,
     )
-    _mark_appointment_queued(entry=entry, changed_by_id=created_by_id)
+    if mark_appointment_status:
+        _mark_appointment_queued(entry=entry, changed_by_id=created_by_id)
     entry.refresh_from_db()
     return entry
 

@@ -6,9 +6,16 @@ from django.utils import timezone
 from apps.queueing.models import Queue, QueueEntry, QueueEntryEvent, QueueTransfer
 from common.exceptions import ConflictError, ValidationError
 
-from ._shared import ACTIVE_QUEUE_ENTRY_STATUSES, get_queue, get_queue_entry, get_user, normalize_optional_text, validate_checkin_for_queue
+from ._shared import get_queue, get_queue_entry, get_user, normalize_optional_text, validate_checkin_for_queue
 from .queue_entry_event_service import record_queue_event
 from .queue_entry_service import create_queue_entry
+
+TRANSFERABLE_QUEUE_ENTRY_STATUSES = {
+    QueueEntry.Status.WAITING,
+    QueueEntry.Status.CALLED,
+    QueueEntry.Status.SKIPPED,
+    QueueEntry.Status.IN_SERVICE,
+}
 
 
 @transaction.atomic
@@ -26,8 +33,8 @@ def transfer_queue_entry(
     reason = normalize_optional_text(transfer_reason)
     if reason is None:
         raise ValidationError("transfer_reason is required.")
-    if source_entry.status not in ACTIVE_QUEUE_ENTRY_STATUSES:
-        raise ValidationError("Only waiting, called, or skipped entries can be transferred.")
+    if source_entry.status not in TRANSFERABLE_QUEUE_ENTRY_STATUSES:
+        raise ValidationError("Only waiting, called, skipped, or in-service entries can be transferred.")
     if destination_queue.status != Queue.Status.OPEN:
         raise ValidationError("Destination queue must be open.")
     if source_entry.queue_id == destination_queue.id:
@@ -61,6 +68,7 @@ def transfer_queue_entry(
         priority_reason=source_entry.priority_reason,
         joined_at=transfer_time,
         created_by_id=transferred_by_id,
+        mark_appointment_status=False,
     )
 
     try:

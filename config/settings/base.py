@@ -21,6 +21,7 @@ CORS_ALLOW_CREDENTIALS = True
 ENVIRONMENT = os.getenv("APP_ENV", os.getenv("DJANGO_ENVIRONMENT", "local"))
 
 INSTALLED_APPS = [
+    "channels",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -180,6 +181,12 @@ SPECTACULAR_SETTINGS = {
 }
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [REDIS_URL]},
+    }
+}
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/1")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
 CELERY_BEAT_SCHEDULER = "celery.beat:PersistentScheduler"

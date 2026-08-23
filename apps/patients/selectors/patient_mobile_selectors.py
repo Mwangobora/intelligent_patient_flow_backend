@@ -136,6 +136,7 @@ def list_patient_queue_entries(*, patient: Patient, statuses: set[str] | None = 
     queryset = QueueEntry.objects.select_related(
         "queue",
         "queue__service_point",
+        "queue__service_point__service_point_type",
         "queue__service_point__facility",
         "patient_checkin",
         "patient_checkin__patient",
@@ -157,10 +158,12 @@ def build_patient_queue_payload(entry: QueueEntry | None) -> dict:
     if entry is None:
         return {
             "queue_entry_id": None,
+            "queue_id": None,
             "queue_number": None,
             "queue_name": None,
             "service_point": None,
             "facility": None,
+            "queue_status": None,
             "status": None,
             "priority_label": None,
             "estimated_wait_minutes": None,
@@ -175,17 +178,20 @@ def build_patient_queue_payload(entry: QueueEntry | None) -> dict:
     prediction = get_latest_prediction_for_queue_entry(queue_entry_id=entry.id)
     return {
         "queue_entry_id": entry.id,
+        "queue_id": entry.queue_id,
         "queue_number": build_display_queue_number(queue=entry.queue, sequence_number=entry.sequence_number),
         "queue_name": entry.queue.service_point.name,
         "service_point": {
             "id": entry.queue.service_point_id,
             "name": entry.queue.service_point.name,
             "code": entry.queue.service_point.code,
+            "type_name": entry.queue.service_point.service_point_type.name,
         },
         "facility": {
             "id": entry.queue.service_point.facility_id,
             "name": entry.queue.service_point.facility.name,
         },
+        "queue_status": entry.queue.status,
         "status": entry.status,
         "priority_label": _priority_label(entry.priority_level),
         "estimated_wait_minutes": prediction.predicted_wait_minutes if prediction else None,
