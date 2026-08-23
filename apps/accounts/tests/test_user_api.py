@@ -4,7 +4,7 @@ from django.urls import reverse
 
 import pytest
 
-from apps.accounts.models import User
+from apps.accounts.models import User, UserMembership
 
 
 @pytest.mark.django_db
@@ -67,16 +67,21 @@ def test_user_with_correct_permission_can_create_user(
     assert created_user.is_superuser is False
 
 
+def _add_user_to_organization(user, organization):
+    return UserMembership.objects.create(user=user, organization=organization)
+
+
 @pytest.mark.django_db
-def test_activate_user_works_with_permission(authenticated_client, grant_system_permission, user_factory):
+def test_activate_user_works_with_permission(authenticated_client, grant_system_permission, organization, user_factory):
     actor = user_factory(email="activate-actor@example.com")
     target = user_factory(email="inactive-target@example.com")
+    _add_user_to_organization(target, organization)
     target.is_active = False
     target.save(update_fields=["is_active", "updated_at"])
-    grant_system_permission(user=actor, permission_code="accounts_user.activate")
+    grant_system_permission(user=actor, permission_code="accounts_user.activate", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
-    response = client.post(reverse("accounts-users-activate", kwargs={"pk": target.id}), format="json")
+    response = client.post(reverse("accounts-users-activate", kwargs={"pk": target.id}), {"organization_id": str(organization.id)}, format="json")
 
     target.refresh_from_db()
     assert response.status_code == 200
@@ -84,13 +89,14 @@ def test_activate_user_works_with_permission(authenticated_client, grant_system_
 
 
 @pytest.mark.django_db
-def test_deactivate_user_works_with_permission(authenticated_client, grant_system_permission, user_factory):
+def test_deactivate_user_works_with_permission(authenticated_client, grant_system_permission, organization, user_factory):
     actor = user_factory(email="deactivate-actor@example.com")
     target = user_factory(email="active-target@example.com")
-    grant_system_permission(user=actor, permission_code="accounts_user.deactivate")
+    _add_user_to_organization(target, organization)
+    grant_system_permission(user=actor, permission_code="accounts_user.deactivate", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
-    response = client.post(reverse("accounts-users-deactivate", kwargs={"pk": target.id}), format="json")
+    response = client.post(reverse("accounts-users-deactivate", kwargs={"pk": target.id}), {"organization_id": str(organization.id)}, format="json")
 
     target.refresh_from_db()
     assert response.status_code == 200
@@ -98,13 +104,14 @@ def test_deactivate_user_works_with_permission(authenticated_client, grant_syste
 
 
 @pytest.mark.django_db
-def test_verify_email_works_with_permission(authenticated_client, grant_system_permission, user_factory):
+def test_verify_email_works_with_permission(authenticated_client, grant_system_permission, organization, user_factory):
     actor = user_factory(email="verify-email-actor@example.com")
     target = user_factory(email="verify-email-target@example.com")
-    grant_system_permission(user=actor, permission_code="accounts_user.verify_email")
+    _add_user_to_organization(target, organization)
+    grant_system_permission(user=actor, permission_code="accounts_user.verify_email", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
-    response = client.post(reverse("accounts-users-verify-email", kwargs={"pk": target.id}), format="json")
+    response = client.post(reverse("accounts-users-verify-email", kwargs={"pk": target.id}), {"organization_id": str(organization.id)}, format="json")
 
     target.refresh_from_db()
     assert response.status_code == 200
@@ -112,13 +119,14 @@ def test_verify_email_works_with_permission(authenticated_client, grant_system_p
 
 
 @pytest.mark.django_db
-def test_verify_phone_works_with_permission(authenticated_client, grant_system_permission, user_factory):
+def test_verify_phone_works_with_permission(authenticated_client, grant_system_permission, organization, user_factory):
     actor = user_factory(email="verify-phone-actor@example.com")
     target = user_factory(email="verify-phone-target@example.com", phone_number="+255733333333")
-    grant_system_permission(user=actor, permission_code="accounts_user.verify_phone")
+    _add_user_to_organization(target, organization)
+    grant_system_permission(user=actor, permission_code="accounts_user.verify_phone", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
-    response = client.post(reverse("accounts-users-verify-phone", kwargs={"pk": target.id}), format="json")
+    response = client.post(reverse("accounts-users-verify-phone", kwargs={"pk": target.id}), {"organization_id": str(organization.id)}, format="json")
 
     target.refresh_from_db()
     assert response.status_code == 200
