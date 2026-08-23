@@ -38,6 +38,7 @@ class PractitionerDetailSerializer(PractitionerListSerializer):
 
 class PractitionerCreateSerializer(serializers.Serializer):
     organization_id = serializers.UUIDField()
+    facility_id = serializers.UUIDField(required=False, allow_null=True, write_only=True)
     practitioner_type_id = serializers.UUIDField()
     user_id = serializers.UUIDField(required=False, allow_null=True)
     first_name = serializers.CharField()
@@ -49,6 +50,7 @@ class PractitionerCreateSerializer(serializers.Serializer):
 
 
 class PractitionerUpdateSerializer(serializers.Serializer):
+    facility_id = serializers.UUIDField(required=False, allow_null=True, write_only=True)
     practitioner_type_id = serializers.UUIDField(required=False)
     user_id = serializers.UUIDField(required=False, allow_null=True)
     first_name = serializers.CharField(required=False)

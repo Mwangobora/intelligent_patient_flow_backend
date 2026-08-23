@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.practitioners._helpers import translate_domain_error
-from apps.practitioners.models import Practitioner
+from apps.practitioners.models import Practitioner, PractitionerFacilityAssignment
 from apps.practitioners.selectors import get_practitioner_by_id, list_practitioners
 from apps.practitioners.serializers import PractitionerCreateSerializer, PractitionerDetailSerializer, PractitionerListSerializer, PractitionerUpdateSerializer
 from apps.practitioners.services import create_practitioner, deactivate_practitioner, reactivate_practitioner, update_practitioner
@@ -27,6 +27,21 @@ class PractitionerViewSet(PractitionersBaseViewSet):
         "reactivate": "practitioners_practitioner.deactivate",
     }
 
+    def _resolve_practitioner_facility_scope(self, request, practitioner):
+        requested_facility_id = request.data.get("facility_id") or request.query_params.get("facility_id")
+        if requested_facility_id:
+            return requested_facility_id
+        assignment = (
+            PractitionerFacilityAssignment.objects.filter(
+                practitioner=practitioner,
+                is_active=True,
+                facility__organization_id=practitioner.organization_id,
+            )
+            .order_by("-is_primary", "created_at")
+            .first()
+        )
+        return assignment.facility_id if assignment else None
+
     def get_serializer_class(self):
         return {
             "list": PractitionerListSerializer,
@@ -37,12 +52,12 @@ class PractitionerViewSet(PractitionersBaseViewSet):
 
     def get_permission_scope(self, request):
         if self.action == "create":
-            return request.data.get("organization_id"), None
+            return request.data.get("organization_id"), request.data.get("facility_id")
         if self.action in {"retrieve", "partial_update", "deactivate", "reactivate"}:
             practitioner = get_practitioner_by_id(self.kwargs.get("pk"))
             if practitioner is None:
                 return None, None
-            return practitioner.organization_id, None
+            return practitioner.organization_id, self._resolve_practitioner_facility_scope(request, practitioner)
         return request.query_params.get("organization_id"), request.query_params.get("facility_id")
 
     def list(self, request):
@@ -59,8 +74,10 @@ class PractitionerViewSet(PractitionersBaseViewSet):
     def create(self, request):
         serializer = PractitionerCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        practitioner_data = dict(serializer.validated_data)
+        practitioner_data.pop("facility_id", None)
         try:
-            practitioner = create_practitioner(**serializer.validated_data, created_by_id=request.user.id)
+            practitioner = create_practitioner(**practitioner_data, created_by_id=request.user.id)
         except Exception as exc:
             translate_domain_error(exc)
         return Response(PractitionerDetailSerializer(practitioner).data, status=status.HTTP_201_CREATED)
@@ -74,8 +91,10 @@ class PractitionerViewSet(PractitionersBaseViewSet):
     def partial_update(self, request, pk=None):
         serializer = PractitionerUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        practitioner_data = dict(serializer.validated_data)
+        practitioner_data.pop("facility_id", None)
         try:
-            practitioner = update_practitioner(practitioner_id=pk, **serializer.validated_data)
+            practitioner = update_practitioner(practitioner_id=pk, **practitioner_data)
         except Exception as exc:
             translate_domain_error(exc)
         return Response(PractitionerDetailSerializer(practitioner).data)
