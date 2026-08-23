@@ -8,7 +8,7 @@ from apps.facilities.models import Facility
 from apps.patients.models import Patient
 from apps.patients.selectors import build_patient_queue_payload, get_current_patient_queue_entry
 from apps.queueing.models import Queue
-from apps.queueing.realtime import facility_group_name, patient_queue_group_name, queue_group_name
+from apps.queueing.realtime import facility_group_name, make_json_safe, patient_queue_group_name, queue_group_name
 
 
 @database_sync_to_async
@@ -41,7 +41,7 @@ def _patient_queue_payload(user) -> tuple[bool, dict]:
     if patient is None:
         return False, {}
     entry = get_current_patient_queue_entry(patient=patient)
-    return True, build_patient_queue_payload(entry)
+    return True, make_json_safe(build_patient_queue_payload(entry))
 
 
 class QueueFacilityConsumer(AsyncJsonWebsocketConsumer):

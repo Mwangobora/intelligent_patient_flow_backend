@@ -27,7 +27,7 @@ def _json_safe(data: Any) -> Any:
     return JSONRenderer().render(data)
 
 
-def _decode_json_safe(data: Any) -> Any:
+def make_json_safe(data: Any) -> Any:
     import json
 
     return json.loads(_json_safe(data))
@@ -59,7 +59,7 @@ def broadcast_queue_update(*, queue_id, event: str) -> None:
         payload = {
             "type": "queue_update",
             "event": event,
-            "queue": _decode_json_safe(QueueOutputSerializer(queue).data),
+            "queue": make_json_safe(QueueOutputSerializer(queue).data),
         }
         _send_group(facility_group_name(queue.service_point.facility_id), "queue_update", payload)
         _send_group(queue_group_name(queue.id), "queue_update", payload)
@@ -88,7 +88,7 @@ def broadcast_queue_entry_update(*, queue_entry_id, event: str) -> None:
         if entry is None:
             return
 
-        queue_entry_payload = _decode_json_safe(QueueEntryOutputSerializer(entry).data)
+        queue_entry_payload = make_json_safe(QueueEntryOutputSerializer(entry).data)
         payload = {"type": "queue_entry_update", "event": event, "queue_entry": queue_entry_payload}
         facility_id = entry.queue.service_point.facility_id
         _send_group(facility_group_name(facility_id), "queue_update", payload)
@@ -100,7 +100,7 @@ def broadcast_queue_entry_update(*, queue_entry_id, event: str) -> None:
             patient_payload = {
                 "type": "patient_queue_update",
                 "event": event,
-                "queue_entry": _decode_json_safe(build_patient_queue_payload(current_entry)),
+                "queue_entry": make_json_safe(build_patient_queue_payload(current_entry)),
             }
             _send_group(patient_queue_group_name(patient.user_id), "patient_queue_update", patient_payload)
 
