@@ -84,6 +84,43 @@ def test_facility_role_requires_active_facility_membership(
 
 
 @pytest.mark.django_db
+def test_facility_manager_can_assign_facility_role_to_facility_member(
+    authenticated_client,
+    facility,
+    grant_system_permission,
+    organization,
+    role_factory,
+    user_factory,
+):
+    manager = user_factory(email="facility-manager-assigner@example.com")
+    target = user_factory(email="facility-receptionist-target@example.com")
+    role = role_factory(
+        name="Receptionist",
+        code="RECEPTIONIST",
+        organization=organization,
+        facility=facility,
+    )
+    UserMembership.objects.create(user=target, organization=organization, facility=facility)
+    grant_system_permission(
+        user=manager,
+        permission_code="accounts_role_assignment.create",
+        scope="facility",
+        organization=organization,
+        facility=facility,
+    )
+    client = authenticated_client(manager)
+
+    response = client.post(
+        reverse("accounts-role-assignments-list"),
+        {"user_id": str(target.id), "role_id": str(role.id)},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert UserRoleAssignment.objects.filter(user=target, role=role, is_active=True).exists()
+
+
+@pytest.mark.django_db
 def test_cannot_assign_inactive_role(
     authenticated_client,
     grant_system_permission,
