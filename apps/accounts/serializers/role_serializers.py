@@ -101,12 +101,28 @@ class RoleAssignmentReactivateSerializer(serializers.Serializer):
 
 
 class MembershipSummarySerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source="organization.name", read_only=True)
+    facility_name = serializers.CharField(source="facility.name", read_only=True)
+
     class Meta:
         model = UserMembership
-        fields = ["id", "user", "organization", "facility", "starts_at", "ends_at", "is_active"]
+        fields = [
+            "id",
+            "user",
+            "organization",
+            "organization_name",
+            "facility",
+            "facility_name",
+            "starts_at",
+            "ends_at",
+            "is_active",
+        ]
 
 
 class RoleAssignmentSummarySerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(source="role.name", read_only=True)
+    role_code = serializers.CharField(source="role.code", read_only=True)
+
     class Meta:
         model = UserRoleAssignment
-        fields = ["id", "user", "role", "starts_at", "ends_at", "is_active"]
+        fields = ["id", "user", "role", "role_name", "role_code", "starts_at", "ends_at", "is_active"]
