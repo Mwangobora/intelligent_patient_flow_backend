@@ -122,7 +122,20 @@ class MembershipSummarySerializer(serializers.ModelSerializer):
 class RoleAssignmentSummarySerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(source="role.name", read_only=True)
     role_code = serializers.CharField(source="role.code", read_only=True)
+    role_organization_name = serializers.CharField(source="role.organization.name", read_only=True)
+    role_facility_name = serializers.CharField(source="role.facility.name", read_only=True)
 
     class Meta:
         model = UserRoleAssignment
-        fields = ["id", "user", "role", "role_name", "role_code", "starts_at", "ends_at", "is_active"]
+        fields = [
+            "id",
+            "user",
+            "role",
+            "role_name",
+            "role_code",
+            "role_organization_name",
+            "role_facility_name",
+            "starts_at",
+            "ends_at",
+            "is_active",
+        ]

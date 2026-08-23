@@ -155,7 +155,7 @@ def test_inactive_facility_cannot_be_used(
 def test_duplicate_membership_fails_cleanly(authenticated_client, grant_system_permission, organization, user_factory):
     actor = user_factory(email="duplicate-membership-actor@example.com")
     target = user_factory(email="duplicate-membership-target@example.com")
-    UserMembership.objects.create(user=target, organization=organization)
+    membership = UserMembership.objects.create(user=target, organization=organization)
     grant_system_permission(user=actor, permission_code="accounts_membership.create")
     client = authenticated_client(actor)
 
@@ -165,7 +165,49 @@ def test_duplicate_membership_fails_cleanly(authenticated_client, grant_system_p
         format="json",
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 201
+    assert response.data["id"] == str(membership.id)
+    assert UserMembership.objects.filter(user=target, organization=organization, facility__isnull=True).count() == 1
+
+
+@pytest.mark.django_db
+def test_existing_future_facility_membership_is_refreshed_for_today(
+    authenticated_client,
+    facility,
+    grant_system_permission,
+    organization,
+    user_factory,
+):
+    actor = user_factory(email="refresh-future-membership-actor@example.com")
+    target = user_factory(email="refresh-future-membership-target@example.com")
+    future_start = timezone.now() + timedelta(days=30)
+    membership = UserMembership.objects.create(
+        user=target,
+        organization=organization,
+        facility=facility,
+        starts_at=future_start,
+    )
+    grant_system_permission(user=actor, permission_code="accounts_membership.create")
+    client = authenticated_client(actor)
+    starts_at = timezone.now()
+
+    response = client.post(
+        reverse("accounts-memberships-facility"),
+        {
+            "user_id": str(target.id),
+            "organization_id": str(organization.id),
+            "facility_id": str(facility.id),
+            "starts_at": starts_at.isoformat(),
+        },
+        format="json",
+    )
+
+    membership.refresh_from_db()
+    assert response.status_code == 201
+    assert response.data["id"] == str(membership.id)
+    assert membership.starts_at <= timezone.now()
+    assert membership.is_active is True
+    assert UserMembership.objects.filter(user=target, facility=facility).count() == 1
 
 
 @pytest.mark.django_db

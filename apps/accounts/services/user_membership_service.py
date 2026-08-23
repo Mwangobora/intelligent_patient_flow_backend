@@ -62,21 +62,48 @@ def _resolve_membership_dates(*, starts_at, ends_at) -> tuple:
     return resolved_starts_at, ends_at
 
 
-def _ensure_org_membership_not_exists(*, user: User, organization: Organization) -> None:
-    if UserMembership.objects.select_for_update().filter(
+def _get_existing_org_membership(*, user: User, organization: Organization) -> UserMembership | None:
+    return UserMembership.objects.select_for_update().filter(
         user=user,
         organization=organization,
         facility__isnull=True,
-    ).exists():
-        raise ConflictError("Organization membership already exists for this user.")
+    ).first()
 
 
-def _ensure_facility_membership_not_exists(*, user: User, facility: Facility) -> None:
-    if UserMembership.objects.select_for_update().filter(
+def _get_existing_facility_membership(*, user: User, facility: Facility) -> UserMembership | None:
+    return UserMembership.objects.select_for_update().filter(
         user=user,
         facility=facility,
-    ).exists():
-        raise ConflictError("Facility membership already exists for this user.")
+    ).first()
+
+
+def _membership_is_effective(*, membership: UserMembership, effective_at) -> bool:
+    return (
+        membership.is_active
+        and membership.starts_at <= effective_at
+        and (membership.ends_at is None or membership.ends_at >= effective_at)
+    )
+
+
+def _reuse_or_refresh_membership(
+    *,
+    membership: UserMembership,
+    starts_at,
+    ends_at,
+    created_by: User | None,
+) -> UserMembership:
+    if _membership_is_effective(membership=membership, effective_at=starts_at):
+        return membership
+
+    membership.starts_at = starts_at
+    membership.ends_at = ends_at
+    membership.is_active = True
+    update_fields = ["starts_at", "ends_at", "is_active", "updated_at"]
+    if created_by is not None:
+        membership.created_by = created_by
+        update_fields.append("created_by")
+    membership.save(update_fields=update_fields)
+    return membership
 
 
 @transaction.atomic
@@ -91,9 +118,15 @@ def create_organization_membership(
     user = _get_user(user_id)
     organization = _get_organization(organization_id)
     resolved_starts_at, resolved_ends_at = _resolve_membership_dates(starts_at=starts_at, ends_at=ends_at)
-    _ensure_org_membership_not_exists(user=user, organization=organization)
-
     created_by = _get_creator_user(created_by_id) if created_by_id is not None else None
+    existing = _get_existing_org_membership(user=user, organization=organization)
+    if existing is not None:
+        return _reuse_or_refresh_membership(
+            membership=existing,
+            starts_at=resolved_starts_at,
+            ends_at=resolved_ends_at,
+            created_by=created_by,
+        )
 
     try:
         return UserMembership.objects.create(
@@ -125,9 +158,15 @@ def create_facility_membership(
         raise ValidationError("Facility must belong to the selected organization.")
 
     resolved_starts_at, resolved_ends_at = _resolve_membership_dates(starts_at=starts_at, ends_at=ends_at)
-    _ensure_facility_membership_not_exists(user=user, facility=facility)
-
     created_by = _get_creator_user(created_by_id) if created_by_id is not None else None
+    existing = _get_existing_facility_membership(user=user, facility=facility)
+    if existing is not None:
+        return _reuse_or_refresh_membership(
+            membership=existing,
+            starts_at=resolved_starts_at,
+            ends_at=resolved_ends_at,
+            created_by=created_by,
+        )
 
     try:
         return UserMembership.objects.create(
