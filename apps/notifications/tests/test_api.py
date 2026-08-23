@@ -3,14 +3,23 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from channels.db import database_sync_to_async
+from channels.testing import WebsocketCommunicator
 from django.utils import timezone
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.notifications.models import PatientNotification, UserPushDevice
 from apps.notifications.services import create_patient_notification, send_notification
 from apps.notifications.services._crypto import build_value_hash
+from config.asgi import application
 
 
 pytestmark = pytest.mark.django_db
+
+
+def _patient_cookie_headers(user):
+    refresh = RefreshToken.for_user(user)
+    return [(b"cookie", f"access_token={refresh.access_token}".encode())]
 
 
 def _grant_all_notification_permissions(user, grant_system_permission):
@@ -439,3 +448,81 @@ def test_pending_notification_selector_returns_due_notifications_only(authentica
 
     assert response.status_code == 200
     assert [item["id"] for item in response.data] == [str(due.id)]
+
+
+def test_patient_mobile_notification_list_returns_only_own_notifications(authenticated_client, patient_user, patient, other_patient):
+    own_notification = create_patient_notification(
+        patient_id=patient.id,
+        notification_type=PatientNotification.NotificationType.GENERAL,
+        channel=PatientNotification.Channel.IN_APP,
+        recipient_user_id=patient.user_id,
+        body="Own mobile notification",
+    )
+    create_patient_notification(
+        patient_id=other_patient.id,
+        notification_type=PatientNotification.NotificationType.GENERAL,
+        channel=PatientNotification.Channel.IN_APP,
+        recipient_user_id=other_patient.user_id,
+        body="Other mobile notification",
+    )
+    client = authenticated_client(patient_user)
+
+    response = client.get("/api/v1/patient/notifications/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.data] == [str(own_notification.id)]
+    assert "body_encrypted" not in response.data[0]
+
+
+def test_patient_mobile_notification_detail_cannot_read_other_patient_notification(authenticated_client, patient_user, other_patient):
+    notification = create_patient_notification(
+        patient_id=other_patient.id,
+        notification_type=PatientNotification.NotificationType.GENERAL,
+        channel=PatientNotification.Channel.IN_APP,
+        recipient_user_id=other_patient.user_id,
+        body="Other mobile notification",
+    )
+    client = authenticated_client(patient_user)
+
+    response = client.get(f"/api/v1/patient/notifications/{notification.id}/")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_patient_notification_socket_receives_live_notification(patient_user, patient):
+    headers = _patient_cookie_headers(patient_user)
+
+    @database_sync_to_async
+    def create_notification():
+        notification = create_patient_notification(
+            patient_id=patient.id,
+            notification_type=PatientNotification.NotificationType.GENERAL,
+            channel=PatientNotification.Channel.IN_APP,
+            recipient_user_id=patient.user_id,
+            body="Realtime notification",
+        )
+        return str(notification.id)
+
+    async def run():
+        communicator = WebsocketCommunicator(
+            application,
+            "/ws/patient/notifications/",
+            headers=headers,
+        )
+        connected, _ = await communicator.connect()
+        connected_message = await communicator.receive_json_from()
+        notification_id = await create_notification()
+        live_message = await communicator.receive_json_from()
+        await communicator.disconnect()
+        return connected, connected_message, notification_id, live_message
+
+    import asyncio
+
+    connected, connected_message, notification_id, live_message = asyncio.run(run())
+    assert connected is True
+    assert connected_message["type"] == "connected"
+    assert connected_message["scope"] == "patient_notifications"
+    assert live_message["type"] == "patient_notification_update"
+    assert live_message["notification"]["id"] == notification_id
+    assert "body_encrypted" not in live_message["notification"]

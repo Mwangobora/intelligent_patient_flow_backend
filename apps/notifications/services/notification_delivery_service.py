@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.notifications.models import PatientNotification
+from apps.notifications.realtime import broadcast_patient_notification
 from common.exceptions import ValidationError
 
 from ._shared import get_notification, safe_failure_reason
@@ -25,6 +26,7 @@ def claim_notification_for_processing(*, notification_id) -> PatientNotification
         raise ValidationError("Only pending notifications can be claimed for processing.")
     notification.status = PatientNotification.Status.PROCESSING
     notification.save(update_fields=["status", "updated_at"])
+    broadcast_patient_notification(notification_id=notification.id, event="processing")
     return notification
 
 
@@ -58,10 +60,12 @@ def send_notification(*, notification_id) -> PatientNotification:
             notification.failed_at = attempt_time
             notification.failure_reason = safe_failure_reason(str(exc))
             notification.save(update_fields=["status", "attempt_count", "last_attempt_at", "failed_at", "failure_reason", "updated_at"])
+            broadcast_patient_notification(notification_id=notification.id, event="failed")
         else:
             notification.status = PatientNotification.Status.SENT
             notification.sent_at = attempt_time
             notification.save(update_fields=["status", "attempt_count", "last_attempt_at", "sent_at", "updated_at"])
+            broadcast_patient_notification(notification_id=notification.id, event="sent")
 
     return notification
 
@@ -97,4 +101,5 @@ def send_in_app_notification(*, notification: PatientNotification, sent_at=None)
             "updated_at",
         ]
     )
+    broadcast_patient_notification(notification_id=notification.id, event="delivered")
     return notification

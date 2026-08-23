@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -11,12 +13,37 @@ from ._shared import get_queue, get_queue_entry, get_user, normalize_optional_te
 from .queue_entry_event_service import record_queue_event
 from .queue_entry_service import create_queue_entry
 
+logger = logging.getLogger(__name__)
+
 TRANSFERABLE_QUEUE_ENTRY_STATUSES = {
     QueueEntry.Status.WAITING,
     QueueEntry.Status.CALLED,
     QueueEntry.Status.SKIPPED,
     QueueEntry.Status.IN_SERVICE,
 }
+
+
+def _notify_patient_transfer(*, source_entry: QueueEntry, destination_entry: QueueEntry, event_id, created_by_id=None) -> None:
+    if not source_entry.patient_checkin.patient.user_id:
+        return
+    try:
+        from apps.notifications.services import send_notification
+        from apps.notifications.services.notification_factory_service import create_queue_updated_notification
+
+        source_notification = create_queue_updated_notification(
+            queue_entry_id=source_entry.id,
+            idempotency_key=f"queue:{source_entry.id}:transferred:{event_id}",
+            created_by_id=created_by_id,
+        )
+        destination_notification = create_queue_updated_notification(
+            queue_entry_id=destination_entry.id,
+            idempotency_key=f"queue:{destination_entry.id}:transfer_joined:{event_id}",
+            created_by_id=created_by_id,
+        )
+        send_notification(notification_id=source_notification.id)
+        send_notification(notification_id=destination_notification.id)
+    except Exception:
+        logger.info("Patient queue transfer notification skipped for entry %s", source_entry.id, exc_info=True)
 
 
 @transaction.atomic
@@ -51,7 +78,7 @@ def transfer_queue_entry(
     previous_status = source_entry.status
     source_entry.status = QueueEntry.Status.TRANSFERRED
     source_entry.save(update_fields=["status", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=source_entry,
         event_type=QueueEntryEvent.EventType.TRANSFERRED,
         from_status=previous_status,
@@ -79,6 +106,12 @@ def transfer_queue_entry(
             transferred_by=transferred_by,
             transfer_reason=reason,
             transferred_at=transfer_time,
+        )
+        _notify_patient_transfer(
+            source_entry=source_entry,
+            destination_entry=destination_entry,
+            event_id=event.id,
+            created_by_id=transferred_by_id,
         )
         broadcast_queue_entry_update(queue_entry_id=source_entry.id, event="transferred")
         return transfer

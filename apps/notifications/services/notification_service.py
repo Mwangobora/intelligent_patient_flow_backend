@@ -4,6 +4,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.notifications.models import PatientNotification
+from apps.notifications.realtime import broadcast_patient_notification
 from common.exceptions import ConflictError, ValidationError
 
 from ._crypto import encrypt_sensitive_value
@@ -91,6 +92,7 @@ def create_patient_notification(
         )
     except IntegrityError as exc:
         raise ConflictError("Notification conflicts with an existing record.") from exc
+    broadcast_patient_notification(notification_id=notification.id, event="created")
     return notification
 
 
@@ -105,6 +107,7 @@ def cancel_notification(*, notification_id, cancelled_by_id=None, reason: str | 
     notification.status = PatientNotification.Status.CANCELLED
     notification.failure_reason = safe_failure_reason(reason) if reason else notification.failure_reason
     notification.save(update_fields=["status", "failure_reason", "updated_at"])
+    broadcast_patient_notification(notification_id=notification.id, event="cancelled")
     return notification
 
 
@@ -115,6 +118,7 @@ def mark_notification_processing(*, notification_id) -> PatientNotification:
         raise ValidationError("Only pending notifications can be marked processing.")
     notification.status = PatientNotification.Status.PROCESSING
     notification.save(update_fields=["status", "updated_at"])
+    broadcast_patient_notification(notification_id=notification.id, event="processing")
     return notification
 
 
@@ -146,6 +150,7 @@ def mark_notification_sent(*, notification_id, provider_message_id: str | None =
             "updated_at",
         ]
     )
+    broadcast_patient_notification(notification_id=notification.id, event="sent")
     return notification
 
 
@@ -163,6 +168,7 @@ def mark_notification_delivered(*, notification_id, delivered_at=None) -> Patien
     notification.failed_at = None
     notification.failure_reason = None
     notification.save(update_fields=["status", "sent_at", "delivered_at", "failed_at", "failure_reason", "updated_at"])
+    broadcast_patient_notification(notification_id=notification.id, event="delivered")
     return notification
 
 
@@ -180,6 +186,7 @@ def mark_notification_failed(*, notification_id, failure_reason: str, failed_at=
     notification.failed_at = failed_at or timezone.now()
     notification.failure_reason = safe_failure_reason(failure_reason)
     notification.save(update_fields=["status", "attempt_count", "last_attempt_at", "failed_at", "failure_reason", "updated_at"])
+    broadcast_patient_notification(notification_id=notification.id, event="failed")
     return notification
 
 
@@ -197,4 +204,5 @@ def mark_notification_read(*, notification_id, read_at=None) -> PatientNotificat
 
     notification.read_at = read_time
     notification.save(update_fields=["read_at", "updated_at"])
+    broadcast_patient_notification(notification_id=notification.id, event="read")
     return notification

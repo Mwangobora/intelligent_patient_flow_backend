@@ -100,7 +100,11 @@ def permission_factory():
             "is_active": True,
         }
         defaults.update(overrides)
-        return Permission.objects.create(code=code, **defaults)
+        permission, _ = Permission.objects.get_or_create(code=code, defaults=defaults)
+        for field, value in defaults.items():
+            setattr(permission, field, value)
+        permission.save()
+        return permission
 
     return create_permission
 

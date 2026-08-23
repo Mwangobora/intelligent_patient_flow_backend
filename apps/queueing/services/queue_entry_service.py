@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -24,6 +26,8 @@ from ._shared import (
 from .queue_entry_event_service import record_queue_event
 from .queue_number_service import issue_next_sequence_number
 
+logger = logging.getLogger(__name__)
+
 
 def _mark_appointment_queued(*, entry: QueueEntry, changed_by_id=None) -> None:
     if entry.patient_checkin.appointment_id is None:
@@ -47,6 +51,31 @@ def _mark_appointment_completed(*, entry: QueueEntry, changed_by_id=None) -> Non
     from apps.scheduling.services import mark_completed
 
     mark_completed(appointment_id=entry.patient_checkin.appointment_id, changed_by_id=changed_by_id)
+
+
+def _notify_patient_queue_event(*, entry: QueueEntry, event: str, event_id, created_by_id=None) -> None:
+    if not entry.patient_checkin.patient.user_id:
+        return
+    try:
+        from apps.notifications.services import send_notification
+        from apps.notifications.services.notification_factory_service import (
+            create_queue_called_notification,
+            create_queue_joined_notification,
+            create_queue_updated_notification,
+        )
+
+        factory = {
+            "joined": create_queue_joined_notification,
+            "called": create_queue_called_notification,
+        }.get(event, create_queue_updated_notification)
+        notification = factory(
+            queue_entry_id=entry.id,
+            idempotency_key=f"queue:{entry.id}:{event}:{event_id}",
+            created_by_id=created_by_id,
+        )
+        send_notification(notification_id=notification.id)
+    except Exception:
+        logger.info("Patient queue notification skipped for entry %s event %s", entry.id, event, exc_info=True)
 
 
 @transaction.atomic
@@ -95,7 +124,7 @@ def create_queue_entry(
     except IntegrityError as exc:
         raise ConflictError("Queue entry could not be created because a conflicting record already exists.") from exc
 
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.JOINED,
         from_status=None,
@@ -106,6 +135,7 @@ def create_queue_entry(
     if mark_appointment_status:
         _mark_appointment_queued(entry=entry, changed_by_id=created_by_id)
     entry.refresh_from_db()
+    _notify_patient_queue_event(entry=entry, event="joined", event_id=event.id, created_by_id=created_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="joined")
     return entry
 
@@ -123,7 +153,7 @@ def call_queue_entry(*, queue_entry_id, performed_by_id=None, called_at=None) ->
         entry.called_at = event_time
     entry.status = QueueEntry.Status.CALLED
     entry.save(update_fields=["status", "called_at", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.CALLED,
         from_status=previous_status,
@@ -131,6 +161,7 @@ def call_queue_entry(*, queue_entry_id, performed_by_id=None, called_at=None) ->
         performed_by_id=performed_by_id,
         occurred_at=event_time,
     )
+    _notify_patient_queue_event(entry=entry, event="called", event_id=event.id, created_by_id=performed_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="called")
     return entry
 
@@ -143,7 +174,7 @@ def recall_queue_entry(*, queue_entry_id, performed_by_id=None, recalled_at=None
     previous_status = entry.status
     entry.status = QueueEntry.Status.CALLED
     entry.save(update_fields=["status", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.RECALLED,
         from_status=previous_status,
@@ -151,6 +182,7 @@ def recall_queue_entry(*, queue_entry_id, performed_by_id=None, recalled_at=None
         performed_by_id=performed_by_id,
         occurred_at=event_time,
     )
+    _notify_patient_queue_event(entry=entry, event="recalled", event_id=event.id, created_by_id=performed_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="recalled")
     return entry
 
@@ -163,7 +195,7 @@ def skip_queue_entry(*, queue_entry_id, performed_by_id=None, reason: str | None
     previous_status = entry.status
     entry.status = QueueEntry.Status.SKIPPED
     entry.save(update_fields=["status", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.SKIPPED,
         from_status=previous_status,
@@ -172,6 +204,7 @@ def skip_queue_entry(*, queue_entry_id, performed_by_id=None, reason: str | None
         reason=reason,
         occurred_at=event_time,
     )
+    _notify_patient_queue_event(entry=entry, event="skipped", event_id=event.id, created_by_id=performed_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="skipped")
     return entry
 
@@ -191,7 +224,7 @@ def start_service(*, queue_entry_id, performed_by_id=None, started_at=None, allo
     entry.status = QueueEntry.Status.IN_SERVICE
     entry.service_started_at = event_time
     entry.save(update_fields=["status", "service_started_at", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.SERVICE_STARTED,
         from_status=previous_status,
@@ -200,6 +233,7 @@ def start_service(*, queue_entry_id, performed_by_id=None, started_at=None, allo
         occurred_at=event_time,
     )
     _mark_appointment_in_service(entry=entry, changed_by_id=performed_by_id)
+    _notify_patient_queue_event(entry=entry, event="service_started", event_id=event.id, created_by_id=performed_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="service_started")
     return entry
 
@@ -216,7 +250,7 @@ def complete_service(*, queue_entry_id, performed_by_id=None, completed_at=None)
     entry.status = QueueEntry.Status.COMPLETED
     entry.service_completed_at = event_time
     entry.save(update_fields=["status", "service_completed_at", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.SERVICE_COMPLETED,
         from_status=previous_status,
@@ -225,6 +259,7 @@ def complete_service(*, queue_entry_id, performed_by_id=None, completed_at=None)
         occurred_at=event_time,
     )
     _mark_appointment_completed(entry=entry, changed_by_id=performed_by_id)
+    _notify_patient_queue_event(entry=entry, event="service_completed", event_id=event.id, created_by_id=performed_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="service_completed")
     return entry
 
@@ -247,7 +282,7 @@ def cancel_queue_entry(*, queue_entry_id, cancelled_by_id, cancellation_reason: 
     entry.cancelled_by = cancelled_by
     entry.cancellation_reason = reason
     entry.save(update_fields=["status", "cancelled_at", "cancelled_by", "cancellation_reason", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.CANCELLED,
         from_status=previous_status,
@@ -256,6 +291,7 @@ def cancel_queue_entry(*, queue_entry_id, cancelled_by_id, cancellation_reason: 
         reason=reason,
         occurred_at=event_time,
     )
+    _notify_patient_queue_event(entry=entry, event="cancelled", event_id=event.id, created_by_id=cancelled_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="cancelled")
     return entry
 
@@ -271,7 +307,7 @@ def change_priority(*, queue_entry_id, priority_level: int, priority_reason: str
     entry.priority_level = priority_level
     entry.priority_reason = reason
     entry.save(update_fields=["priority_level", "priority_reason", "updated_at"])
-    record_queue_event(
+    event = record_queue_event(
         queue_entry=entry,
         event_type=QueueEntryEvent.EventType.PRIORITY_CHANGED,
         from_status=entry.status,
@@ -279,5 +315,6 @@ def change_priority(*, queue_entry_id, priority_level: int, priority_reason: str
         performed_by_id=performed_by_id,
         reason=reason,
     )
+    _notify_patient_queue_event(entry=entry, event="priority_changed", event_id=event.id, created_by_id=performed_by_id)
     broadcast_queue_entry_update(queue_entry_id=entry.id, event="priority_changed")
     return entry

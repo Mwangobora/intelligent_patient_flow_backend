@@ -16,6 +16,9 @@ from apps.checkins.services import consume_checkin_token, create_appointment_che
 from apps.checkins.services._crypto import build_token_hash
 from apps.facilities.selectors import list_facilities, list_facility_specialties
 from apps.facilities.serializers import FacilityListSerializer, FacilitySpecialtyDetailSerializer
+from apps.notifications.models import PatientNotification
+from apps.notifications.serializers import PatientNotificationOutputSerializer
+from apps.notifications.services import mark_notification_read
 from apps.patients.selectors import (
     PATIENT_QUEUE_HISTORY_STATUSES,
     build_patient_queue_history_payload,
@@ -38,6 +41,7 @@ from apps.patients.serializers import (
     PatientMobileAppointmentCreateSerializer,
     PatientMobileAppointmentRescheduleSerializer,
     PatientMobileAppointmentSlotQuerySerializer,
+    PatientMobileNotificationSerializer,
     PatientMobileRegisterSerializer,
     PatientMobileRegistrationResponseSerializer,
     PatientQrConsumeInputSerializer,
@@ -605,6 +609,62 @@ class PatientQueueHistoryAPIView(APIView):
                 {"count": count, "limit": limit, "offset": offset, "results": results}
             ).data
         )
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientNotificationListAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: PatientMobileNotificationSerializer(many=True)})
+    def get(self, request):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        queryset = (
+            PatientNotification.objects.select_related("patient", "recipient_user", "appointment", "queue_entry")
+            .filter(patient=patient)
+            .order_by("-created_at")
+        )
+        if request.query_params.get("unread_only", "").lower() == "true":
+            queryset = queryset.filter(read_at__isnull=True).exclude(status=PatientNotification.Status.CANCELLED)
+        return Response(PatientNotificationOutputSerializer(queryset, many=True).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientNotificationDetailAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: PatientMobileNotificationSerializer})
+    def get(self, request, notification_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        notification = PatientNotification.objects.filter(pk=notification_id, patient=patient).first()
+        if notification is None:
+            return Response({"detail": "Notification not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(PatientNotificationOutputSerializer(notification).data)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientNotificationMarkReadAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(responses={200: PatientMobileNotificationSerializer})
+    def post(self, request, notification_id):
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        notification = PatientNotification.objects.filter(pk=notification_id, patient=patient).first()
+        if notification is None:
+            return Response({"detail": "Notification not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            notification = mark_notification_read(notification_id=notification.id)
+        except Exception as exc:
+            translate_domain_error(exc)
+        return Response(PatientNotificationOutputSerializer(notification).data)
 
 
 def _positive_int(value, *, default: int, max_value: int) -> int:

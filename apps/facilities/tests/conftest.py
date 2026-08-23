@@ -50,12 +50,18 @@ def grant_system_permission():
 
     def grant(*, user: User, permission_code: str):
         module, action = permission_code.split(".", 1)
-        permission = Permission.objects.create(
-            name=permission_code.replace(".", " ").replace("_", " ").title(),
+        defaults = {
+            "name": permission_code.replace(".", " ").replace("_", " ").title(),
+            "module": module,
+            "action": action,
+        }
+        permission, _ = Permission.objects.get_or_create(
             code=permission_code,
-            module=module,
-            action=action,
+            defaults=defaults,
         )
+        for field, value in defaults.items():
+            setattr(permission, field, value)
+        permission.save()
         role = Role.objects.create(name=f"Facilities Role {next(sequence)}", code=f"FAC_ROLE_{next(sequence)}")
         RolePermission.objects.create(role=role, permission=permission)
         UserRoleAssignment.objects.create(user=user, role=role)
