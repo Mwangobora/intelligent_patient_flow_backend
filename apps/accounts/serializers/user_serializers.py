@@ -5,6 +5,13 @@ from rest_framework import serializers
 from apps.accounts.models import User, UserMembership, UserRoleAssignment
 
 
+class BlankableUUIDField(serializers.UUIDField):
+    def to_internal_value(self, data):
+        if data == "":
+            return None
+        return super().to_internal_value(data)
+
+
 class MembershipSummarySerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(source="organization.name", read_only=True)
     facility_name = serializers.CharField(source="facility.name", read_only=True)
@@ -156,6 +163,8 @@ class UserCreateSerializer(serializers.Serializer):
     first_name = serializers.CharField()
     middle_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     last_name = serializers.CharField()
+    organization_id = BlankableUUIDField(required=False, allow_null=True, write_only=True)
+    facility_id = BlankableUUIDField(required=False, allow_null=True, write_only=True)
 
 
 class UserUpdateSerializer(serializers.Serializer):

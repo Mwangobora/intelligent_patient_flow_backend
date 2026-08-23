@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -18,7 +19,16 @@ from apps.accounts.serializers import (
     UserListSerializer,
     UserUpdateSerializer,
 )
-from apps.accounts.services import activate_user, create_user, deactivate_user, update_user, verify_email, verify_phone
+from apps.accounts.services import (
+    activate_user,
+    create_facility_membership,
+    create_organization_membership,
+    create_user,
+    deactivate_user,
+    update_user,
+    verify_email,
+    verify_phone,
+)
 
 from ._helpers import translate_domain_error
 
@@ -53,6 +63,24 @@ def _request_scope(request, source):
     if request.user.is_superuser or organization_id or facility_id:
         return organization_id, facility_id
     return _default_user_scope(request.user)
+
+
+def _apply_scope_to_created_user(*, user, organization_id=None, facility_id=None, created_by_id=None):
+    if not organization_id:
+        return
+    if facility_id:
+        create_facility_membership(
+            user_id=user.id,
+            organization_id=organization_id,
+            facility_id=facility_id,
+            created_by_id=created_by_id,
+        )
+        return
+    create_organization_membership(
+        user_id=user.id,
+        organization_id=organization_id,
+        created_by_id=created_by_id,
+    )
 
 
 def _user_visible_in_scope(*, actor, target, organization_id=None, facility_id=None):
@@ -104,11 +132,23 @@ class UserViewSet(viewsets.GenericViewSet):
     def create(self, request):
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        user_data = dict(serializer.validated_data)
+        organization_id = user_data.pop("organization_id", None)
+        facility_id = user_data.pop("facility_id", None)
+        if not request.user.is_superuser and not organization_id and not facility_id:
+            organization_id, facility_id = _default_user_scope(request.user)
         try:
-            user = create_user(**serializer.validated_data)
+            with transaction.atomic():
+                user = create_user(**user_data)
+                _apply_scope_to_created_user(
+                    user=user,
+                    organization_id=organization_id,
+                    facility_id=facility_id,
+                    created_by_id=request.user.id,
+                )
         except Exception as exc:
             translate_domain_error(exc)
-        return Response(UserDetailSerializer(user).data, status=status.HTTP_201_CREATED)
+        return Response(UserDetailSerializer(get_user_by_id(user.id)).data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, pk=None):
         organization_id, facility_id = _request_scope(request, request.query_params)
