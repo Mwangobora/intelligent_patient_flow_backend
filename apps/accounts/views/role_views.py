@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from django.db.models import Q
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -41,6 +43,36 @@ from apps.accounts.services import (
 from ._helpers import translate_domain_error
 
 
+def _blank_to_none(value):
+    return None if value == "" else value
+
+
+def _active_memberships_for_user(user):
+    now = timezone.now()
+    return UserMembership.objects.filter(
+        user=user,
+        is_active=True,
+        starts_at__lte=now,
+    ).filter(Q(ends_at__isnull=True) | Q(ends_at__gte=now))
+
+
+def _default_role_scope(user):
+    membership = _active_memberships_for_user(user).filter(facility__isnull=False).order_by("-starts_at").first()
+    if membership is None:
+        membership = _active_memberships_for_user(user).order_by("-starts_at").first()
+    if membership is None:
+        return None, None
+    return membership.organization_id, membership.facility_id
+
+
+def _request_role_scope(request, source):
+    organization_id = _blank_to_none(source.get("organization_id"))
+    facility_id = _blank_to_none(source.get("facility_id"))
+    if request.user.is_superuser or organization_id or facility_id:
+        return organization_id, facility_id
+    return _default_role_scope(request.user)
+
+
 @extend_schema(tags=["Authorization APIs"])
 class RoleViewSet(viewsets.GenericViewSet):
     lookup_url_kwarg = "pk"
@@ -61,9 +93,9 @@ class RoleViewSet(viewsets.GenericViewSet):
 
     def get_permission_scope(self, request):
         if self.action == "list":
-            return request.query_params.get("organization_id"), request.query_params.get("facility_id")
+            return _request_role_scope(request, request.query_params)
         if self.action == "create":
-            return request.data.get("organization_id"), request.data.get("facility_id")
+            return _request_role_scope(request, request.data)
 
         role = get_role_by_id(self.kwargs.get("pk"))
         if role is None:
@@ -71,9 +103,10 @@ class RoleViewSet(viewsets.GenericViewSet):
         return role.organization_id, role.facility_id
 
     def list(self, request):
+        organization_id, facility_id = _request_role_scope(request, request.query_params)
         queryset = list_roles(
-            organization_id=request.query_params.get("organization_id"),
-            facility_id=request.query_params.get("facility_id"),
+            organization_id=organization_id,
+            facility_id=facility_id,
             is_active=None if request.query_params.get("is_active") is None else request.query_params.get("is_active") == "true",
             search=request.query_params.get("search"),
         )
@@ -82,8 +115,13 @@ class RoleViewSet(viewsets.GenericViewSet):
     def create(self, request):
         serializer = RoleCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        role_data = dict(serializer.validated_data)
+        if not request.user.is_superuser and not role_data.get("organization_id") and not role_data.get("facility_id"):
+            organization_id, facility_id = _default_role_scope(request.user)
+            role_data["organization_id"] = organization_id
+            role_data["facility_id"] = facility_id
         try:
-            role = create_role(**serializer.validated_data)
+            role = create_role(**role_data)
         except Exception as exc:
             translate_domain_error(exc)
         return Response(RoleDetailSerializer(role).data, status=status.HTTP_201_CREATED)

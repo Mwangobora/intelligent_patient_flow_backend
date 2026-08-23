@@ -5,6 +5,13 @@ from rest_framework import serializers
 from apps.accounts.models import Role, RolePermission, UserMembership, UserRoleAssignment
 
 
+class BlankableUUIDField(serializers.UUIDField):
+    def to_internal_value(self, data):
+        if data == "":
+            return None
+        return super().to_internal_value(data)
+
+
 class RolePermissionSummarySerializer(serializers.ModelSerializer):
     permission_code = serializers.CharField(source="permission.code", read_only=True)
     permission_name = serializers.CharField(source="permission.name", read_only=True)
@@ -43,15 +50,15 @@ class RoleDetailSerializer(RoleListSerializer):
 class RoleCreateSerializer(serializers.Serializer):
     name = serializers.CharField()
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    organization_id = serializers.UUIDField(required=False, allow_null=True)
-    facility_id = serializers.UUIDField(required=False, allow_null=True)
+    organization_id = BlankableUUIDField(required=False, allow_null=True)
+    facility_id = BlankableUUIDField(required=False, allow_null=True)
 
 
 class RoleUpdateSerializer(serializers.Serializer):
     name = serializers.CharField(required=False)
     description = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    organization_id = serializers.UUIDField(required=False, allow_null=True)
-    facility_id = serializers.UUIDField(required=False, allow_null=True)
+    organization_id = BlankableUUIDField(required=False, allow_null=True)
+    facility_id = BlankableUUIDField(required=False, allow_null=True)
 
 
 class RolePermissionActionSerializer(serializers.Serializer):
