@@ -8,8 +8,9 @@ from apps.accounts.models import Permission
 
 
 @pytest.mark.django_db
-def test_permissions_are_not_seeded_automatically():
-    assert Permission.objects.count() == 0
+def test_system_permissions_are_synced_by_migrations():
+    assert Permission.objects.filter(code="accounts_user.view", is_active=True).exists()
+    assert Permission.objects.filter(code="queueing_entry.call", is_active=True).exists()
 
 
 @pytest.mark.django_db

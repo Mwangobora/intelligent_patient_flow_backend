@@ -234,6 +234,7 @@ def test_user_with_correct_permission_can_grant_permission_to_role(
     role = role_factory(name="Grant Role", code="GRANT_ROLE", organization=organization)
     permission = permission_factory("accounts_user.view")
     grant_system_permission(user=actor, permission_code="accounts_role_permission.grant")
+    grant_system_permission(user=actor, permission_code="accounts_user.view", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
     response = client.post(
@@ -249,17 +250,14 @@ def test_user_with_correct_permission_can_grant_permission_to_role(
 @pytest.mark.django_db
 def test_cannot_grant_inactive_permission(
     authenticated_client,
-    grant_system_permission,
+    admin_user,
     organization,
     permission_factory,
     role_factory,
-    user_factory,
 ):
-    actor = user_factory(email="inactive-permission@example.com")
     role = role_factory(name="Grant Role", code="GRANT_ROLE", organization=organization)
     permission = permission_factory("accounts_user.view", is_active=False)
-    grant_system_permission(user=actor, permission_code="accounts_role_permission.grant")
-    client = authenticated_client(actor)
+    client = authenticated_client(admin_user)
 
     response = client.post(
         reverse("accounts-roles-grant-permission", kwargs={"pk": role.id}),
@@ -284,6 +282,7 @@ def test_cannot_grant_permission_to_inactive_role(
     role = role_factory(name="Grant Role", code="GRANT_ROLE", organization=organization, is_active=False)
     permission = permission_factory("accounts_user.view")
     grant_system_permission(user=actor, permission_code="accounts_role_permission.grant")
+    grant_system_permission(user=actor, permission_code="accounts_user.view", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
     response = client.post(
@@ -309,6 +308,7 @@ def test_duplicate_active_role_permission_grant_is_handled_cleanly(
     role = role_factory(name="Grant Role", code="GRANT_ROLE", organization=organization)
     permission = permission_factory("accounts_user.view")
     grant_system_permission(user=actor, permission_code="accounts_role_permission.grant")
+    grant_system_permission(user=actor, permission_code="accounts_user.view", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
     first_response = client.post(
@@ -342,6 +342,7 @@ def test_inactive_role_permission_can_be_reactivated_via_grant(
     permission = permission_factory("accounts_user.view")
     role_permission = RolePermission.objects.create(role=role, permission=permission, is_active=False)
     grant_system_permission(user=actor, permission_code="accounts_role_permission.grant")
+    grant_system_permission(user=actor, permission_code="accounts_user.view", scope="organization", organization=organization)
     client = authenticated_client(actor)
 
     response = client.post(

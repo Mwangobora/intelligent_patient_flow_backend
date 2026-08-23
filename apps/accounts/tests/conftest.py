@@ -109,14 +109,20 @@ def authenticated_client(api_client):
 def permission_factory():
     def create_permission(code: str, **overrides) -> Permission:
         module, action = code.split(".", 1)
-        defaults = {
+        values = {
             "name": overrides.pop("name", code.replace(".", " ").replace("_", " ").title()),
             "module": module,
             "action": action,
             "description": overrides.pop("description", None),
             "is_active": overrides.pop("is_active", True),
+            **overrides,
         }
-        return Permission.objects.create(code=code, **defaults, **overrides)
+        permission, created = Permission.objects.get_or_create(code=code, defaults=values)
+        if not created:
+            for field, value in values.items():
+                setattr(permission, field, value)
+            permission.save(update_fields=[*values.keys(), "updated_at"])
+        return permission
 
     return create_permission
 

@@ -76,9 +76,9 @@ def test_generated_code_is_not_in_write_serializers():
 
 def test_permissions_keep_semantic_code_format():
     permission = create_permission(
-        name="View Audit Logs",
-        module="audit_log",
+        name="View Demo Capability",
+        module="demo_capability",
         action="view",
     )
 
-    assert permission.code == "audit_log.view"
+    assert permission.code == "demo_capability.view"
