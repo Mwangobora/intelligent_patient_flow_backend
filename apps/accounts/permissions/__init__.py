@@ -36,14 +36,26 @@ class HasSystemPermission(BasePermission):
         if request.user.is_superuser:
             return True
 
+        permission_codes = getattr(view, "required_permissions_any", None)
         permission_code = getattr(view, "required_permission", None)
-        if not permission_code:
+        if not permission_code and not permission_codes:
             return False
 
         if hasattr(view, "get_permission_scope"):
             organization, facility = view.get_permission_scope(request)
         else:
             organization, facility = None, None
+
+        if permission_codes:
+            return any(
+                user_has_permission(
+                    request.user,
+                    candidate_permission,
+                    organization=organization,
+                    facility=facility,
+                )
+                for candidate_permission in permission_codes
+            )
 
         return user_has_permission(
             request.user,

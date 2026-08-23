@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.accounts.permissions import HasSystemPermission
+from apps.accounts.permissions import HasSystemPermission, user_has_permission
+from apps.accounts.selectors.permission_selectors import get_user_effective_permissions
 from apps.accounts.selectors import get_permission_by_id, list_permissions
 from apps.accounts.serializers import (
     PermissionCreateSerializer,
@@ -30,15 +32,34 @@ class PermissionViewSet(viewsets.GenericViewSet):
             "partial_update": "accounts_permission.update",
             "deactivate": "accounts_permission.deactivate",
         }
-        self.required_permission = permission_map[self.action]
+        if self.action == "list":
+            self.required_permissions_any = ["accounts_permission.view", "accounts_role_permission.grant"]
+        else:
+            self.required_permission = permission_map[self.action]
         return [HasSystemPermission()]
 
     def list(self, request):
-        queryset = list_permissions(
-            module=request.query_params.get("module"),
-            is_active=None if request.query_params.get("is_active") is None else request.query_params.get("is_active") == "true",
-            search=request.query_params.get("search"),
-        )
+        is_active = None if request.query_params.get("is_active") is None else request.query_params.get("is_active") == "true"
+        if request.user.is_superuser or user_has_permission(request.user, "accounts_permission.view"):
+            queryset = list_permissions(
+                module=request.query_params.get("module"),
+                is_active=is_active,
+                search=request.query_params.get("search"),
+            )
+        else:
+            queryset = get_user_effective_permissions(user=request.user)
+            if request.query_params.get("module"):
+                queryset = queryset.filter(module=request.query_params.get("module"))
+            if is_active is not None:
+                queryset = queryset.filter(is_active=is_active)
+            if request.query_params.get("search"):
+                search = request.query_params.get("search")
+                queryset = queryset.filter(
+                    Q(name__icontains=search)
+                    | Q(code__icontains=search)
+                    | Q(module__icontains=search)
+                    | Q(action__icontains=search)
+                )
         return Response(PermissionListSerializer(queryset, many=True).data)
 
     def create(self, request):

@@ -5,11 +5,12 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.accounts.models import UserMembership, UserRoleAssignment
-from apps.accounts.permissions import HasSystemPermission
-from apps.accounts.selectors import get_role_by_id, list_roles
+from apps.accounts.permissions import HasSystemPermission, user_has_permission
+from apps.accounts.selectors import get_permission_by_id, get_role_by_id, list_roles
 from apps.accounts.serializers import (
     EndMembershipSerializer,
     FacilityMembershipCreateSerializer,
@@ -153,6 +154,17 @@ class RoleViewSet(viewsets.GenericViewSet):
     def grant_permission(self, request, pk=None):
         serializer = RolePermissionActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        role = get_role_by_id(pk)
+        permission = get_permission_by_id(serializer.validated_data["permission_id"])
+        if role is None or permission is None:
+            return Response({"detail": "Role or permission not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not request.user.is_superuser and not user_has_permission(
+            request.user,
+            permission.code,
+            organization=role.organization_id,
+            facility=role.facility_id,
+        ):
+            raise PermissionDenied("You can only grant permissions you already have in this scope.")
         try:
             role_permission = grant_permission_to_role(
                 role_id=pk,
