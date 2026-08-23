@@ -28,6 +28,14 @@ AS $$
     SELECT ENCODE(DIGEST('ui-demo:' || seed, 'sha256'), 'hex')::CHAR(64);
 $$;
 
+CREATE OR REPLACE FUNCTION pg_temp.ui_demo_local_ts(day_offset INTEGER, local_time TIME)
+RETURNS TIMESTAMPTZ
+LANGUAGE SQL
+STABLE
+AS $$
+    SELECT ((CURRENT_DATE + day_offset + local_time) AT TIME ZONE 'Africa/Dar_es_Salaam');
+$$;
+
 -- Django model defaults are application-level, but the SQL schema defines
 -- database-level timestamp defaults. Align local direct-SQL seeding with that
 -- schema behavior so seed inserts stay constraint-safe.
@@ -665,8 +673,8 @@ SELECT
     pg_temp.ui_demo_uuid('practitioner-department-assignment-' || n),
     pg_temp.ui_demo_uuid('service-point-' || (((n - 1) % 5) + 1) || '-1'),
     pg_temp.ui_demo_uuid('consultation-room-' || (((n - 1) % 5) + 1) || '-1'),
-    TIMESTAMPTZ '2026-07-20 08:00:00+03' + (((n - 1) / 5) || ' days')::INTERVAL,
-    TIMESTAMPTZ '2026-07-20 12:00:00+03' + (((n - 1) / 5) || ' days')::INTERVAL,
+    pg_temp.ui_demo_local_ts(((((n - 1) / 5) + 1))::INTEGER, TIME '08:00'),
+    pg_temp.ui_demo_local_ts(((((n - 1) / 5) + 1))::INTEGER, TIME '12:00'),
     NULL,
     NULL,
     TRUE,
@@ -684,11 +692,9 @@ SELECT
     pg_temp.ui_demo_uuid('appointment-slot-' || n),
     pg_temp.ui_demo_uuid('practitioner-shift-' || (((n - 1) / 2) + 1)),
     pg_temp.ui_demo_uuid('facility-specialty-' || (((((n - 1) / 2) % 5) + 1)::TEXT) || '-1'),
-    TIMESTAMPTZ '2026-07-20 08:00:00+03'
-        + ((((((n - 1) / 2) + 1 - 1) / 5) || ' days')::INTERVAL)
+    pg_temp.ui_demo_local_ts(((((((n - 1) / 2) + 1 - 1) / 5) + 1))::INTEGER, TIME '08:00')
         + ((((n - 1) % 2) * 30) || ' minutes')::INTERVAL,
-    TIMESTAMPTZ '2026-07-20 08:30:00+03'
-        + ((((((n - 1) / 2) + 1 - 1) / 5) || ' days')::INTERVAL)
+    pg_temp.ui_demo_local_ts(((((((n - 1) / 2) + 1 - 1) / 5) + 1))::INTEGER, TIME '08:30')
         + ((((n - 1) % 2) * 30) || ' minutes')::INTERVAL,
     2,
     CASE WHEN n <= 50 THEN 1 ELSE 0 END,

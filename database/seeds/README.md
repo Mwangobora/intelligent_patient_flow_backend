@@ -9,10 +9,11 @@ docker compose exec -T api python manage.py dbshell < database/seeds/ui_demo_dat
 docker compose exec -T api python manage.py backfill_codes
 ```
 
-Demo login:
+Demo logins:
 
 ```text
-Email: demo.user01@patientflow.local
+Staff/web email: demo.user01@patientflow.local
+Patient mobile email: demo.user12@patientflow.local
 Password: DemoPass123!
 ```
 
