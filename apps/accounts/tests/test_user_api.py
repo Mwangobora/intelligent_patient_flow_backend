@@ -4,7 +4,7 @@ from django.urls import reverse
 
 import pytest
 
-from apps.accounts.models import User, UserMembership
+from apps.accounts.models import User, UserMembership, UserRoleAssignment
 
 
 @pytest.mark.django_db
@@ -69,6 +69,31 @@ def test_user_with_correct_permission_can_create_user(
 
 def _add_user_to_organization(user, organization):
     return UserMembership.objects.create(user=user, organization=organization)
+
+
+@pytest.mark.django_db
+def test_user_list_includes_access_summary(
+    authenticated_client,
+    grant_system_permission,
+    organization,
+    role_factory,
+    user_factory,
+):
+    actor = user_factory(email="list-summary-actor@example.com")
+    target = user_factory(email="list-summary-target@example.com")
+    membership = UserMembership.objects.create(user=target, organization=organization)
+    role = role_factory(name="Receptionist", code="RECEPTIONIST", organization=organization)
+    assignment = UserRoleAssignment.objects.create(user=target, role=role)
+    grant_system_permission(user=actor, permission_code="accounts_user.view", scope="organization", organization=organization)
+    client = authenticated_client(actor)
+
+    response = client.get(reverse("accounts-users-list"), {"organization_id": str(organization.id)})
+
+    row = next(item for item in response.data if item["id"] == str(target.id))
+    assert response.status_code == 200
+    assert row["memberships"][0]["id"] == str(membership.id)
+    assert row["role_assignments"][0]["id"] == str(assignment.id)
+    assert row["role_assignments"][0]["role_name"] == "Receptionist"
 
 
 @pytest.mark.django_db

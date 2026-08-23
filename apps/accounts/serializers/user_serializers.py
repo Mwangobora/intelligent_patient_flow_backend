@@ -33,6 +33,8 @@ class MembershipSummarySerializer(serializers.ModelSerializer):
 class RoleAssignmentSummarySerializer(serializers.ModelSerializer):
     role_name = serializers.CharField(source="role.name", read_only=True)
     role_code = serializers.CharField(source="role.code", read_only=True)
+    role_organization_name = serializers.CharField(source="role.organization.name", read_only=True)
+    role_facility_name = serializers.CharField(source="role.facility.name", read_only=True)
 
     class Meta:
         model = UserRoleAssignment
@@ -41,6 +43,8 @@ class RoleAssignmentSummarySerializer(serializers.ModelSerializer):
             "role",
             "role_name",
             "role_code",
+            "role_organization_name",
+            "role_facility_name",
             "starts_at",
             "ends_at",
             "is_active",
@@ -75,6 +79,9 @@ class UserSummarySerializer(serializers.ModelSerializer):
 
 
 class UserListSerializer(UserSummarySerializer):
+    memberships = MembershipSummarySerializer(many=True, read_only=True)
+    role_assignments = RoleAssignmentSummarySerializer(many=True, read_only=True)
+
     class Meta(UserSummarySerializer.Meta):
         fields = [
             "id",
@@ -84,6 +91,8 @@ class UserListSerializer(UserSummarySerializer):
             "middle_name",
             "last_name",
             "is_active",
+            "memberships",
+            "role_assignments",
         ]
 
 
