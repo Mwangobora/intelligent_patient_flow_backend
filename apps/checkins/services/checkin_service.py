@@ -20,6 +20,7 @@ from ._shared import (
     validate_checked_in_at,
     validate_patient_facility_scope,
 )
+from .checkin_queue_service import enqueue_checkin_after_arrival
 
 
 def _validate_checkin_method(checkin_method: str) -> None:
@@ -84,6 +85,7 @@ def create_appointment_checkin(
         raise ConflictError("Check-in could not be created because a conflicting record already exists.") from exc
 
     move_appointment_to_checked_in(appointment=appointment, changed_by_id=checked_in_by_id)
+    enqueue_checkin_after_arrival(checkin_id=checkin.id, created_by_id=checked_in_by_id)
     checkin.refresh_from_db()
     return checkin
 

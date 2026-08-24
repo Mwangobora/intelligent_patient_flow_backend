@@ -364,6 +364,24 @@ def test_patient_can_check_in_own_appointment_if_eligible(patient_mobile_client,
 
 
 @pytest.mark.django_db
+def test_patient_checkin_auto_creates_queue_entry_when_service_point_exists(
+    patient_mobile_client,
+    appointment,
+    service_point,
+):
+    response = patient_mobile_client.post(
+        reverse("patient-appointment-checkin", kwargs={"appointment_id": appointment.id}),
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["queue_entry"] is not None
+    assert response.data["queue_entry"]["queue_number"] == f"{service_point.code}-001"
+    appointment.refresh_from_db()
+    assert appointment.status == Appointment.Status.QUEUED
+
+
+@pytest.mark.django_db
 def test_patient_can_issue_qr_token_for_own_appointment(patient_mobile_client, appointment):
     response = patient_mobile_client.post(
         reverse("patient-appointment-qr-token", kwargs={"appointment_id": appointment.id}),
