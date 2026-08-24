@@ -69,8 +69,11 @@ def broadcast_queue_update(*, queue_id, event: str) -> None:
 
 def broadcast_queue_entry_update(*, queue_entry_id, event: str) -> None:
     def _broadcast() -> None:
-        from apps.patients.models import Patient
-        from apps.patients.selectors import build_patient_queue_payload, get_current_patient_queue_entry
+        from apps.patients.selectors import (
+            PATIENT_CURRENT_QUEUE_STATUSES,
+            build_patient_queue_payload,
+            get_current_patient_queue_entry,
+        )
         from apps.queueing.models import QueueEntry
         from apps.queueing.serializers import QueueEntryOutputSerializer
 
@@ -103,5 +106,30 @@ def broadcast_queue_entry_update(*, queue_entry_id, event: str) -> None:
                 "queue_entry": make_json_safe(build_patient_queue_payload(current_entry)),
             }
             _send_group(patient_queue_group_name(patient.user_id), "patient_queue_update", patient_payload)
+
+        impacted_entries = (
+            QueueEntry.objects.select_related(
+                "queue",
+                "queue__service_point",
+                "queue__service_point__facility",
+                "patient_checkin",
+                "patient_checkin__patient",
+            )
+            .filter(
+                queue_id=entry.queue_id,
+                status__in=PATIENT_CURRENT_QUEUE_STATUSES,
+                patient_checkin__patient__user_id__isnull=False,
+            )
+            .exclude(pk=entry.pk)
+        )
+        for impacted_entry in impacted_entries:
+            impacted_patient = impacted_entry.patient_checkin.patient
+            current_entry = get_current_patient_queue_entry(patient=impacted_patient)
+            patient_payload = {
+                "type": "patient_queue_update",
+                "event": "position_updated",
+                "queue_entry": make_json_safe(build_patient_queue_payload(current_entry)),
+            }
+            _send_group(patient_queue_group_name(impacted_patient.user_id), "patient_queue_update", patient_payload)
 
     transaction.on_commit(_broadcast)

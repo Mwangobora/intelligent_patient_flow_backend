@@ -28,6 +28,17 @@ from .queue_number_service import issue_next_sequence_number
 
 logger = logging.getLogger(__name__)
 
+QUEUE_PATIENT_MESSAGES = {
+    "joined": "You have joined the queue. Please watch your queue number.",
+    "called": "You have been called. Please proceed to the reception desk.",
+    "recalled": "You have been called again. Please proceed to the reception desk.",
+    "skipped": "You were skipped. Please contact reception for assistance.",
+    "service_started": "You are now going to the doctor. Please proceed to the consultation area.",
+    "service_completed": "Your service is complete. Please follow any staff instructions.",
+    "cancelled": "Your queue entry was cancelled. Please contact reception if this is unexpected.",
+    "priority_changed": "Your queue priority has been updated.",
+}
+
 
 def _mark_appointment_queued(*, entry: QueueEntry, changed_by_id=None) -> None:
     if entry.patient_checkin.appointment_id is None:
@@ -70,6 +81,7 @@ def _notify_patient_queue_event(*, entry: QueueEntry, event: str, event_id, crea
         }.get(event, create_queue_updated_notification)
         notification = factory(
             queue_entry_id=entry.id,
+            body=QUEUE_PATIENT_MESSAGES.get(event),
             idempotency_key=f"queue:{entry.id}:{event}:{event_id}",
             created_by_id=created_by_id,
         )

@@ -215,6 +215,10 @@ def build_patient_queue_payload(entry: QueueEntry | None) -> dict:
         }
 
     prediction = get_latest_prediction_for_queue_entry(queue_entry_id=entry.id)
+    queue_position = calculate_queue_position(entry=entry)
+    people_ahead = max(queue_position - 1, 0) if queue_position is not None else None
+    if people_ahead is None and entry.status in {QueueEntry.Status.CALLED, QueueEntry.Status.IN_SERVICE}:
+        people_ahead = 0
     return {
         "queue_entry_id": entry.id,
         "queue_id": entry.queue_id,
@@ -234,7 +238,7 @@ def build_patient_queue_payload(entry: QueueEntry | None) -> dict:
         "status": entry.status,
         "priority_label": _priority_label(entry.priority_level),
         "estimated_wait_minutes": prediction.predicted_wait_minutes if prediction else None,
-        "people_ahead": calculate_queue_position(entry=entry),
+        "people_ahead": people_ahead,
         "joined_at": entry.joined_at,
         "called_at": entry.called_at,
         "service_started_at": entry.service_started_at,

@@ -32,11 +32,13 @@ def _notify_patient_transfer(*, source_entry: QueueEntry, destination_entry: Que
 
         source_notification = create_queue_updated_notification(
             queue_entry_id=source_entry.id,
+            body="You are being sent to another hospital service area. Please follow staff instructions.",
             idempotency_key=f"queue:{source_entry.id}:transferred:{event_id}",
             created_by_id=created_by_id,
         )
         destination_notification = create_queue_updated_notification(
             queue_entry_id=destination_entry.id,
+            body="You have joined the next service queue. Please watch your queue number.",
             idempotency_key=f"queue:{destination_entry.id}:transfer_joined:{event_id}",
             created_by_id=created_by_id,
         )

@@ -117,25 +117,25 @@ def create_appointment_cancelled_notification(**kwargs) -> PatientNotification:
     )
 
 
-def create_queue_joined_notification(**kwargs) -> PatientNotification:
+def create_queue_joined_notification(*, body: str | None = None, **kwargs) -> PatientNotification:
     return _create_from_queue_entry(
         notification_type=PatientNotification.NotificationType.QUEUE_JOINED,
-        body="You have joined the queue.",
+        body=body or "You have joined the queue. Please watch your queue number.",
         **kwargs,
     )
 
 
-def create_queue_updated_notification(**kwargs) -> PatientNotification:
+def create_queue_updated_notification(*, body: str | None = None, **kwargs) -> PatientNotification:
     return _create_from_queue_entry(
         notification_type=PatientNotification.NotificationType.QUEUE_UPDATED,
-        body="Your queue status has been updated.",
+        body=body or "Your queue status has been updated. Please check your next step.",
         **kwargs,
     )
 
 
-def create_queue_called_notification(**kwargs) -> PatientNotification:
+def create_queue_called_notification(*, body: str | None = None, **kwargs) -> PatientNotification:
     return _create_from_queue_entry(
         notification_type=PatientNotification.NotificationType.QUEUE_CALLED,
-        body="Please proceed for service.",
+        body=body or "You have been called. Please proceed to the reception desk.",
         **kwargs,
     )
