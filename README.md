@@ -53,6 +53,7 @@ Business models, business APIs, and RBAC are intentionally not implemented yet.
 
 Detached mode:
 `docker compose up --build -d`
+`docker compose exec -T api python manage.py seed_mwimbiri_demo --days 90`
 
 ## Environment Variables
 
