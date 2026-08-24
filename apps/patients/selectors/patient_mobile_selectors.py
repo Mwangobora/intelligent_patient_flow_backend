@@ -103,6 +103,45 @@ def get_checkin_eligibility(*, patient: Patient, appointment_id) -> PatientCheck
     )
 
 
+def get_next_checkin_eligibility_for_facility(*, patient: Patient, facility_id) -> PatientCheckinEligibility | None:
+    appointments = (
+        Appointment.objects.select_related(
+            "facility",
+            "facility__organization",
+            "facility_specialty",
+            "facility_specialty__specialty",
+            "facility_specialty__department",
+        )
+        .filter(patient=patient, facility_id=facility_id)
+        .exclude(
+            status__in={
+                Appointment.Status.CANCELLED,
+                Appointment.Status.COMPLETED,
+                Appointment.Status.NO_SHOW,
+                Appointment.Status.RESCHEDULED,
+            }
+        )
+        .order_by("scheduled_start")
+    )
+
+    fallback = None
+    for appointment in appointments[:20]:
+        existing_checkin = get_active_checkin_for_appointment(appointment=appointment)
+        active_token = get_active_token_for_appointment(appointment=appointment)
+        reason = _checkin_block_reason(appointment=appointment, existing_checkin=existing_checkin)
+        eligibility = PatientCheckinEligibility(
+            appointment=appointment,
+            can_check_in=reason is None,
+            reason=reason,
+            existing_checkin=existing_checkin,
+            active_token=active_token,
+        )
+        if eligibility.can_check_in:
+            return eligibility
+        fallback = fallback or eligibility
+    return fallback
+
+
 def checkin_block_reason(*, appointment: Appointment) -> str | None:
     return _checkin_block_reason(
         appointment=appointment,

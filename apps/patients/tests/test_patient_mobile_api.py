@@ -395,6 +395,36 @@ def test_patient_can_consume_own_qr_token(patient_mobile_client, appointment):
 
 
 @pytest.mark.django_db
+def test_patient_can_consume_facility_qr_for_eligible_appointment(patient_mobile_client, appointment):
+    response = patient_mobile_client.post(
+        reverse("patient-facility-qr-consume"),
+        {"facility_id": str(appointment.facility_id)},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert str(response.data["checkin"]["appointment"]) == str(appointment.id)
+    assert response.data["checkin"]["checkin_method"] == PatientCheckin.CheckinMethod.QR_CODE
+    assert PatientCheckin.objects.filter(appointment=appointment, voided_at__isnull=True).exists()
+
+
+@pytest.mark.django_db
+def test_patient_facility_qr_does_not_check_in_other_facility(
+    patient_mobile_client,
+    patient_with_user,
+    other_org_facility,
+):
+    response = patient_mobile_client.post(
+        reverse("patient-facility-qr-consume"),
+        {"facility_id": str(other_org_facility.id)},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert response.data["detail"] == "Facility not found."
+
+
+@pytest.mark.django_db
 def test_patient_cannot_consume_another_patients_qr_token(
     patient_mobile_client,
     patient_with_user,

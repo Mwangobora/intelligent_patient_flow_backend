@@ -27,6 +27,7 @@ from apps.patients.selectors import (
     get_authenticated_patient,
     get_checkin_eligibility,
     get_current_patient_queue_entry,
+    get_next_checkin_eligibility_for_facility,
     list_patient_queue_entries,
 )
 from apps.patients.serializers import (
@@ -44,6 +45,7 @@ from apps.patients.serializers import (
     PatientMobileNotificationSerializer,
     PatientMobileRegisterSerializer,
     PatientMobileRegistrationResponseSerializer,
+    PatientFacilityQrConsumeInputSerializer,
     PatientQrConsumeInputSerializer,
     PatientQrTokenIssueResponseSerializer,
     PatientQueueCurrentSerializer,
@@ -546,6 +548,59 @@ class PatientQrConsumeAPIView(APIView):
 
         try:
             checkin = consume_checkin_token(raw_token=raw_token)
+        except Exception as exc:
+            translate_domain_error(exc)
+
+        queue_entry = list_entries_by_checkin(patient_checkin_id=checkin.id).first()
+        payload = {
+            "checkin": CheckinOutputSerializer(checkin).data,
+            "queue_entry": build_patient_queue_payload(queue_entry) if queue_entry else None,
+            "message": (
+                "You are checked in. Please wait for reception to add you to the queue."
+                if queue_entry is None
+                else "Check-in successful. Your queue status is ready."
+            ),
+        }
+        return Response(PatientAppointmentCheckinResponseSerializer(payload).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
+class PatientFacilityQrConsumeAPIView(APIView):
+    permission_classes = [IsAuthenticatedActive]
+
+    @extend_schema(request=PatientFacilityQrConsumeInputSerializer, responses={201: PatientAppointmentCheckinResponseSerializer})
+    def post(self, request):
+        serializer = PatientFacilityQrConsumeInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        patient = get_authenticated_patient(request.user)
+        if patient is None:
+            return _patient_not_found_response()
+
+        facility_id = serializer.validated_data["facility_id"]
+        if not list_facilities(organization_id=patient.organization_id, is_active=True).filter(pk=facility_id).exists():
+            return Response({"detail": "Facility not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        eligibility = get_next_checkin_eligibility_for_facility(patient=patient, facility_id=facility_id)
+        if eligibility is None:
+            return Response(
+                {"detail": "No appointment is ready for check-in at this facility.", "reason": "no_eligible_appointment"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not eligibility.can_check_in:
+            return Response(
+                {"detail": "Appointment cannot be checked in.", "reason": eligibility.reason},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        appointment = eligibility.appointment
+        try:
+            checkin = create_appointment_checkin(
+                facility_id=appointment.facility_id,
+                patient_id=patient.id,
+                appointment_id=appointment.id,
+                facility_specialty_id=appointment.facility_specialty_id,
+                checkin_method="qr_code",
+            )
         except Exception as exc:
             translate_domain_error(exc)
 

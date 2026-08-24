@@ -16,6 +16,7 @@ from .patient_mobile_selectors import (
     get_authenticated_patient,
     get_checkin_eligibility,
     get_current_patient_queue_entry,
+    get_next_checkin_eligibility_for_facility,
     list_patient_queue_entries,
 )
 from .relationship_selectors import (
@@ -35,6 +36,7 @@ __all__ = [
     "get_authenticated_patient",
     "get_checkin_eligibility",
     "get_current_patient_queue_entry",
+    "get_next_checkin_eligibility_for_facility",
     "get_patient_identifier_by_id",
     "get_related_person_by_id",
     "get_related_person_contact_by_id",

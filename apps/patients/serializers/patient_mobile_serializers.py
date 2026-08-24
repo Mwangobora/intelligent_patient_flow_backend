@@ -159,6 +159,10 @@ class PatientQrConsumeInputSerializer(serializers.Serializer):
     token = serializers.CharField(write_only=True, trim_whitespace=True)
 
 
+class PatientFacilityQrConsumeInputSerializer(serializers.Serializer):
+    facility_id = serializers.UUIDField()
+
+
 class PatientQueueCurrentSerializer(serializers.Serializer):
     queue_entry_id = serializers.UUIDField(allow_null=True)
     queue_id = serializers.UUIDField(allow_null=True)
