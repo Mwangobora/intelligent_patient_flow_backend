@@ -24,6 +24,8 @@ class RolePermissionSummarySerializer(serializers.ModelSerializer):
 class RoleListSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(source="organization.name", read_only=True)
     facility_name = serializers.CharField(source="facility.name", read_only=True)
+    active_permission_count = serializers.SerializerMethodField()
+    permission_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Role
@@ -37,7 +39,21 @@ class RoleListSerializer(serializers.ModelSerializer):
             "facility",
             "facility_name",
             "is_active",
+            "active_permission_count",
+            "permission_count",
         ]
+
+    def get_active_permission_count(self, role):
+        role_permissions = getattr(role, "_prefetched_objects_cache", {}).get("role_permissions")
+        if role_permissions is not None:
+            return sum(1 for role_permission in role_permissions if role_permission.is_active)
+        return role.role_permissions.filter(is_active=True).count()
+
+    def get_permission_count(self, role):
+        role_permissions = getattr(role, "_prefetched_objects_cache", {}).get("role_permissions")
+        if role_permissions is not None:
+            return len(role_permissions)
+        return role.role_permissions.count()
 
 
 class RoleDetailSerializer(RoleListSerializer):
