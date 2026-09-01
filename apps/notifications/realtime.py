@@ -24,7 +24,7 @@ def _make_json_safe(data: Any) -> Any:
 def broadcast_patient_notification(*, notification_id, event: str) -> None:
     def _broadcast() -> None:
         from apps.notifications.models import PatientNotification
-        from apps.notifications.serializers import PatientNotificationOutputSerializer
+        from apps.notifications.serializers import PatientNotificationPatientOutputSerializer
 
         notification = (
             PatientNotification.objects.select_related("patient", "recipient_user")
@@ -40,7 +40,7 @@ def broadcast_patient_notification(*, notification_id, event: str) -> None:
         payload = {
             "type": "patient_notification_update",
             "event": event,
-            "notification": _make_json_safe(PatientNotificationOutputSerializer(notification).data),
+            "notification": _make_json_safe(PatientNotificationPatientOutputSerializer(notification).data),
         }
         channel_layer = get_channel_layer()
         if channel_layer is None:

@@ -50,6 +50,31 @@ def encrypt_sensitive_value(value: str) -> str:
     return encrypted_value
 
 
+def decrypt_sensitive_value(value: str) -> str:
+    if not value or not value.strip():
+        raise ValidationError("Sensitive value cannot be empty.")
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT pgp_sym_decrypt(
+                    dearmor(CAST(%s AS text)),
+                    CAST(%s AS text)
+                )
+                """,
+                [value, _get_encryption_key()],
+            )
+            row = cursor.fetchone()
+    except DatabaseError as exc:
+        raise ValidationError("Sensitive field decryption is unavailable.") from exc
+
+    decrypted_value = row[0] if row else None
+    if decrypted_value is None:
+        raise ValidationError("Sensitive field decryption did not return a value.")
+    return decrypted_value
+
+
 def build_value_hash(value: str) -> str:
     if not value or not value.strip():
         raise ValidationError("Sensitive value cannot be empty.")

@@ -8,6 +8,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.checkins.models import PatientCheckin
+from apps.notifications.models import PatientNotification
+from apps.notifications.services._crypto import decrypt_sensitive_value
+from apps.patients.selectors import get_current_patient_queue_entry
 from apps.queueing.models import Queue, QueueEntry, QueueEntryEvent, QueueTransfer
 from apps.scheduling.models import Appointment
 
@@ -243,6 +246,29 @@ def test_call_entry_sets_status_called_and_called_at(authenticated_client, check
 
 
 @pytest.mark.django_db
+def test_call_entry_sends_patient_friendly_notification(authenticated_client, grant_system_permission, open_queue, organization, patient, patient_checkin, service_point, user_factory):
+    patient_user = user_factory(email="queue-patient-mobile@example.com", phone_number="+255768555111")
+    patient.user = patient_user
+    patient.save(update_fields=["user", "updated_at"])
+    user = user_factory()
+    grant_queue_permissions(user, grant_system_permission, organization, "queueing_entry.create", "queueing_entry.call")
+    client = authenticated_client(user)
+    entry = client.post(reverse("queueing-entries-list"), entry_payload(open_queue, patient_checkin), format="json")
+
+    response = client.post(reverse("queueing-entries-call", kwargs={"pk": entry.data["id"]}), format="json")
+
+    notification = PatientNotification.objects.filter(
+        queue_entry_id=entry.data["id"],
+        notification_type=PatientNotification.NotificationType.QUEUE_CALLED,
+    ).latest("created_at")
+    body = decrypt_sensitive_value(notification.body_encrypted)
+    assert response.status_code == 200
+    assert "It is your turn" in body
+    assert service_point.name in body
+    assert "queue updated" not in body.lower()
+
+
+@pytest.mark.django_db
 def test_recall_creates_event_but_does_not_overwrite_first_called_at(authenticated_client, checkin_factory, grant_system_permission, open_queue, organization, user_factory):
     user = user_factory()
     grant_queue_permissions(user, grant_system_permission, organization, "queueing_entry.create", "queueing_entry.call", "queueing_entry.skip", "queueing_entry.view")
@@ -325,6 +351,7 @@ def test_transfer_creates_destination_and_marks_source_transferred(authenticated
     assert destination.status == QueueEntry.Status.WAITING
     assert destination.patient_checkin_id == source.patient_checkin_id
     assert destination.sequence_number == 1
+    assert get_current_patient_queue_entry(patient=patient_checkin.patient).id == destination.id
 
 
 @pytest.mark.django_db

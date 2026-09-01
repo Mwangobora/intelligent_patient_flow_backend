@@ -17,7 +17,7 @@ from apps.checkins.services._crypto import build_token_hash
 from apps.facilities.selectors import list_facilities, list_facility_specialties
 from apps.facilities.serializers import FacilityListSerializer, FacilitySpecialtyDetailSerializer
 from apps.notifications.models import PatientNotification
-from apps.notifications.serializers import PatientNotificationOutputSerializer
+from apps.notifications.serializers import PatientNotificationPatientOutputSerializer
 from apps.notifications.services import mark_notification_read
 from apps.patients.selectors import (
     PATIENT_QUEUE_HISTORY_STATUSES,
@@ -683,7 +683,7 @@ class PatientNotificationListAPIView(APIView):
         )
         if request.query_params.get("unread_only", "").lower() == "true":
             queryset = queryset.filter(read_at__isnull=True).exclude(status=PatientNotification.Status.CANCELLED)
-        return Response(PatientNotificationOutputSerializer(queryset, many=True).data)
+        return Response(PatientNotificationPatientOutputSerializer(queryset, many=True).data)
 
 
 @extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
@@ -699,7 +699,7 @@ class PatientNotificationDetailAPIView(APIView):
         notification = PatientNotification.objects.filter(pk=notification_id, patient=patient).first()
         if notification is None:
             return Response({"detail": "Notification not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(PatientNotificationOutputSerializer(notification).data)
+        return Response(PatientNotificationPatientOutputSerializer(notification).data)
 
 
 @extend_schema(tags=[PATIENT_MOBILE_DOCS_TAG])
@@ -719,7 +719,7 @@ class PatientNotificationMarkReadAPIView(APIView):
             notification = mark_notification_read(notification_id=notification.id)
         except Exception as exc:
             translate_domain_error(exc)
-        return Response(PatientNotificationOutputSerializer(notification).data)
+        return Response(PatientNotificationPatientOutputSerializer(notification).data)
 
 
 def _positive_int(value, *, default: int, max_value: int) -> int:

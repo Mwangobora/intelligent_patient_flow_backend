@@ -212,5 +212,6 @@ class PatientMobileNotificationSerializer(serializers.Serializer):
     failed_at = serializers.DateTimeField(allow_null=True)
     failure_reason = serializers.CharField(allow_null=True)
     provider_message_id = serializers.CharField(allow_null=True)
+    body = serializers.CharField(allow_null=True, required=False)
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()

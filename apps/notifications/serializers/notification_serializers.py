@@ -3,6 +3,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.notifications.models import PatientNotification
+from apps.notifications.services._crypto import decrypt_sensitive_value
 
 
 class PatientNotificationCreateInputSerializer(serializers.Serializer):
@@ -57,6 +58,20 @@ class PatientNotificationOutputSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+class PatientNotificationPatientOutputSerializer(PatientNotificationOutputSerializer):
+    body = serializers.SerializerMethodField()
+
+    class Meta(PatientNotificationOutputSerializer.Meta):
+        fields = PatientNotificationOutputSerializer.Meta.fields + ["body"]
+        read_only_fields = fields
+
+    def get_body(self, obj):
+        try:
+            return decrypt_sensitive_value(obj.body_encrypted)
+        except Exception:
+            return "You have a hospital notification."
 
 
 class NotificationDeliveryStatusOutputSerializer(PatientNotificationOutputSerializer):

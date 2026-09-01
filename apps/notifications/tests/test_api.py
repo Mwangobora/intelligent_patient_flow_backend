@@ -471,6 +471,7 @@ def test_patient_mobile_notification_list_returns_only_own_notifications(authent
 
     assert response.status_code == 200
     assert [item["id"] for item in response.data] == [str(own_notification.id)]
+    assert response.data[0]["body"] == "Own mobile notification"
     assert "body_encrypted" not in response.data[0]
 
 
@@ -525,4 +526,5 @@ def test_patient_notification_socket_receives_live_notification(patient_user, pa
     assert connected_message["scope"] == "patient_notifications"
     assert live_message["type"] == "patient_notification_update"
     assert live_message["notification"]["id"] == notification_id
+    assert live_message["notification"]["body"] == "Realtime notification"
     assert "body_encrypted" not in live_message["notification"]

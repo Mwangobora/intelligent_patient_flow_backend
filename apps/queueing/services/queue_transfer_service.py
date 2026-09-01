@@ -11,7 +11,7 @@ from common.exceptions import ConflictError, ValidationError
 from ..realtime import broadcast_queue_entry_update
 from ._shared import get_queue, get_queue_entry, get_user, normalize_optional_text, validate_checkin_for_queue
 from .queue_entry_event_service import record_queue_event
-from .queue_entry_service import create_queue_entry
+from .queue_entry_service import build_patient_queue_notification_body, create_queue_entry
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,16 @@ def _notify_patient_transfer(*, source_entry: QueueEntry, destination_entry: Que
         from apps.notifications.services import send_notification
         from apps.notifications.services.notification_factory_service import create_queue_updated_notification
 
+        destination_name = destination_entry.queue.service_point.name or "the next service area"
         source_notification = create_queue_updated_notification(
             queue_entry_id=source_entry.id,
-            body="You are being sent to another hospital service area. Please follow staff instructions.",
+            body=f"Staff have sent you to {destination_name}. Please wait for your number there.",
             idempotency_key=f"queue:{source_entry.id}:transferred:{event_id}",
             created_by_id=created_by_id,
         )
         destination_notification = create_queue_updated_notification(
             queue_entry_id=destination_entry.id,
-            body="You have joined the next service queue. Please watch your queue number.",
+            body=build_patient_queue_notification_body(entry=destination_entry, event="joined"),
             idempotency_key=f"queue:{destination_entry.id}:transfer_joined:{event_id}",
             created_by_id=created_by_id,
         )

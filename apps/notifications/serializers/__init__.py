@@ -5,6 +5,7 @@ from .notification_serializers import (
     NotificationDeliveryStatusOutputSerializer,
     PatientNotificationCreateInputSerializer,
     PatientNotificationOutputSerializer,
+    PatientNotificationPatientOutputSerializer,
 )
 from .push_device_serializers import PushDeviceOutputSerializer, PushDeviceRegisterInputSerializer, PushDeviceRevokeInputSerializer
 
@@ -15,6 +16,7 @@ __all__ = [
     "NotificationDeliveryStatusOutputSerializer",
     "PatientNotificationCreateInputSerializer",
     "PatientNotificationOutputSerializer",
+    "PatientNotificationPatientOutputSerializer",
     "PushDeviceOutputSerializer",
     "PushDeviceRegisterInputSerializer",
     "PushDeviceRevokeInputSerializer",

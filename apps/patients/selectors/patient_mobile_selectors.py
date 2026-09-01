@@ -19,7 +19,6 @@ PATIENT_CURRENT_QUEUE_STATUSES = {
     QueueEntry.Status.CALLED,
     QueueEntry.Status.SKIPPED,
     QueueEntry.Status.IN_SERVICE,
-    QueueEntry.Status.TRANSFERRED,
 }
 
 PATIENT_QUEUE_HISTORY_STATUSES = {

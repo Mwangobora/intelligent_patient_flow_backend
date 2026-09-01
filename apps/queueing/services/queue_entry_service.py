@@ -28,17 +28,6 @@ from .queue_number_service import issue_next_sequence_number
 
 logger = logging.getLogger(__name__)
 
-QUEUE_PATIENT_MESSAGES = {
-    "joined": "You have joined the queue. Please watch your queue number.",
-    "called": "You have been called. Please proceed to the reception desk.",
-    "recalled": "You have been called again. Please proceed to the reception desk.",
-    "skipped": "You were skipped. Please contact reception for assistance.",
-    "service_started": "You are now going to the doctor. Please proceed to the consultation area.",
-    "service_completed": "Your service is complete. Please follow any staff instructions.",
-    "cancelled": "Your queue entry was cancelled. Please contact reception if this is unexpected.",
-    "priority_changed": "Your queue priority has been updated.",
-}
-
 
 def _mark_appointment_queued(*, entry: QueueEntry, changed_by_id=None) -> None:
     if entry.patient_checkin.appointment_id is None:
@@ -64,6 +53,50 @@ def _mark_appointment_completed(*, entry: QueueEntry, changed_by_id=None) -> Non
     mark_completed(appointment_id=entry.patient_checkin.appointment_id, changed_by_id=changed_by_id)
 
 
+def _service_point_label(entry: QueueEntry) -> str:
+    service_point = entry.queue.service_point
+    name = service_point.name or "the service area"
+    if service_point.location_description:
+        return f"{name} ({service_point.location_description})"
+    return name
+
+
+def _queue_number(entry: QueueEntry) -> str:
+    from apps.queueing.services._shared import build_display_queue_number
+
+    return build_display_queue_number(queue=entry.queue, sequence_number=entry.sequence_number)
+
+
+def _people_ahead_text(entry: QueueEntry) -> str:
+    from apps.queueing.selectors import calculate_queue_position
+
+    position = calculate_queue_position(entry=entry)
+    people_ahead = max(position - 1, 0) if position is not None else None
+    if people_ahead is None:
+        return "Staff will guide you when it is your turn."
+    if people_ahead == 0:
+        return "You are next."
+    if people_ahead == 1:
+        return "There is 1 patient ahead of you."
+    return f"There are {people_ahead} patients ahead of you."
+
+
+def build_patient_queue_notification_body(*, entry: QueueEntry, event: str) -> str:
+    service_area = _service_point_label(entry)
+    queue_number = _queue_number(entry)
+    position_text = _people_ahead_text(entry)
+    return {
+        "joined": f"You are checked in for {service_area}. Your number is {queue_number}. {position_text}",
+        "called": f"It is your turn. Please go to {service_area}. Your number is {queue_number}.",
+        "recalled": f"Reminder: it is your turn. Please go to {service_area}. Your number is {queue_number}.",
+        "skipped": f"You were missed at {service_area}. Please contact reception for help.",
+        "service_started": f"Your service has started at {service_area}.",
+        "service_completed": f"Your service at {service_area} is complete. Please follow staff instructions for the next step.",
+        "cancelled": f"Your visit step at {service_area} was cancelled. Please contact reception if this is unexpected.",
+        "priority_changed": f"Your priority at {service_area} was updated. {position_text}",
+    }.get(event, f"Please check your next step at {service_area}. {position_text}")
+
+
 def _notify_patient_queue_event(*, entry: QueueEntry, event: str, event_id, created_by_id=None) -> None:
     if not entry.patient_checkin.patient.user_id:
         return
@@ -81,7 +114,7 @@ def _notify_patient_queue_event(*, entry: QueueEntry, event: str, event_id, crea
         }.get(event, create_queue_updated_notification)
         notification = factory(
             queue_entry_id=entry.id,
-            body=QUEUE_PATIENT_MESSAGES.get(event),
+            body=build_patient_queue_notification_body(entry=entry, event=event),
             idempotency_key=f"queue:{entry.id}:{event}:{event_id}",
             created_by_id=created_by_id,
         )
