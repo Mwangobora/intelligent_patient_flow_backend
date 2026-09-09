@@ -1,6 +1,11 @@
 from .access_views import PatientAccessGrantViewSet
 from .base import PATIENT_DOCS_TAG, PatientsBaseViewSet
-from .identifier_views import PatientAddressViewSet, PatientIdentifierTypeViewSet, PatientIdentifierViewSet
+from .identifier_views import (
+    PatientAddressViewSet,
+    PatientIdentifierTypeViewSet,
+    PatientIdentifierViewSet,
+)
+from .clinical_history_views import PatientAllergyViewSet, PatientConditionViewSet
 from .patient_views import PatientViewSet
 from .patient_mobile_views import (
     PATIENT_MOBILE_DOCS_TAG,
@@ -26,13 +31,18 @@ from .patient_mobile_views import (
     PatientQueueHistoryAPIView,
     PatientRegisterAPIView,
 )
-from .relationship_views import RelatedPersonContactViewSet, RelationshipTypeViewSet, PatientRelatedPersonViewSet
+from .relationship_views import (
+    RelatedPersonContactViewSet,
+    RelationshipTypeViewSet,
+    PatientRelatedPersonViewSet,
+)
 
 __all__ = [
     "PATIENT_MOBILE_DOCS_TAG",
     "PATIENT_DOCS_TAG",
     "PatientAccessGrantViewSet",
     "PatientAddressViewSet",
+    "PatientAllergyViewSet",
     "PatientAppointmentCancelAPIView",
     "PatientAppointmentCheckinAPIView",
     "PatientAppointmentDetailAPIView",
@@ -43,6 +53,7 @@ __all__ = [
     "PatientAppointmentStatusHistoryAPIView",
     "PatientCheckinEligibilityAPIView",
     "PatientClaimExistingRecordAPIView",
+    "PatientConditionViewSet",
     "PatientCurrentQueueAPIView",
     "PatientFacilityListAPIView",
     "PatientFacilityQrConsumeAPIView",

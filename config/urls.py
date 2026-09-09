@@ -20,6 +20,7 @@ urlpatterns = [
     path("api/v1/", include("apps.scheduling.urls")),
     path("api/v1/", include("apps.checkins.urls")),
     path("api/v1/", include("apps.queueing.urls")),
+    path("api/v1/", include("apps.clinical.urls")),
     path("api/v1/", include("apps.intelligence.urls")),
     path("api/v1/", include("apps.notifications.urls")),
     path("api/v1/", include("apps.reporting.urls")),

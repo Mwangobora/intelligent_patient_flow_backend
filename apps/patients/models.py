@@ -92,14 +92,17 @@ class Patient(TimeStampedModel, ActiveModel):
                 name="ck_patients_sex_code",
             ),
             models.CheckConstraint(
-                condition=Q(phone_number__isnull=True) | Q(phone_number__regex=r"^\+[1-9][0-9]{7,14}$"),
+                condition=Q(phone_number__isnull=True)
+                | Q(phone_number__regex=r"^\+[1-9][0-9]{7,14}$"),
                 name="ck_patients_phone_e164",
             ),
         ]
         indexes = [
             models.Index(fields=["organization"], name="idx_patients_organization"),
             models.Index(fields=["registered_facility"], name="idx_patients_reg_fac"),
-            models.Index(fields=["organization", "last_name", "first_name"], name="idx_patients_name"),
+            models.Index(
+                fields=["organization", "last_name", "first_name"], name="idx_patients_name"
+            ),
         ]
 
     def __str__(self) -> str:
@@ -515,7 +518,11 @@ class PatientAccessGrant(TimeStampedModel, ActiveModel):
             ),
             models.CheckConstraint(
                 condition=(
-                    (Q(revoked_at__isnull=True) & Q(revoked_by__isnull=True) & Q(revocation_reason__isnull=True))
+                    (
+                        Q(revoked_at__isnull=True)
+                        & Q(revoked_by__isnull=True)
+                        & Q(revocation_reason__isnull=True)
+                    )
                     | (
                         Q(revoked_at__isnull=False)
                         & Q(revoked_by__isnull=False)
@@ -535,4 +542,91 @@ class PatientAccessGrant(TimeStampedModel, ActiveModel):
             models.Index(fields=["role"], name="idx_patient_access_grants_role"),
         ]
 
-    
+
+class PatientAllergy(TimeStampedModel):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+        RESOLVED = "resolved", "Resolved"
+        ENTERED_IN_ERROR = "entered_in_error", "Entered In Error"
+
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="allergies")
+    allergen = models.CharField(max_length=150)
+    allergy_type = models.CharField(max_length=50, blank=True, null=True)
+    reaction = models.CharField(max_length=250, blank=True, null=True)
+    severity = models.CharField(max_length=30, blank=True, null=True)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.ACTIVE)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="recorded_patient_allergies",
+        blank=True,
+        null=True,
+    )
+    recorded_at = models.DateTimeField(default=timezone.now)
+    resolved_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "patient_allergies"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=["active", "inactive", "resolved", "entered_in_error"]),
+                name="ck_patient_allergies_status",
+            ),
+            models.CheckConstraint(
+                condition=Q(resolved_at__isnull=True) | Q(resolved_at__gte=F("recorded_at")),
+                name="ck_patient_allergies_resolution",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["patient", "status"], name="idx_pat_allergies_status"),
+            models.Index(fields=["recorded_at"], name="idx_pat_allergies_time"),
+        ]
+
+
+class PatientCondition(TimeStampedModel):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+        RESOLVED = "resolved", "Resolved"
+        ENTERED_IN_ERROR = "entered_in_error", "Entered In Error"
+
+    patient = models.ForeignKey(Patient, on_delete=models.PROTECT, related_name="conditions")
+    diagnosis_code = models.ForeignKey(
+        "clinical.DiagnosisCode",
+        on_delete=models.PROTECT,
+        related_name="patient_conditions",
+        blank=True,
+        null=True,
+    )
+    condition_name = models.CharField(max_length=200)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.ACTIVE)
+    onset_date = models.DateField(blank=True, null=True)
+    resolved_date = models.DateField(blank=True, null=True)
+    notes_encrypted = models.TextField(blank=True, null=True)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="recorded_patient_conditions",
+        blank=True,
+        null=True,
+    )
+
+    class Meta:
+        db_table = "patient_conditions"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=["active", "inactive", "resolved", "entered_in_error"]),
+                name="ck_patient_conditions_status",
+            ),
+            models.CheckConstraint(
+                condition=Q(resolved_date__isnull=True)
+                | Q(onset_date__isnull=True)
+                | Q(resolved_date__gte=F("onset_date")),
+                name="ck_patient_conditions_dates",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["patient", "status"], name="idx_pat_conditions_status"),
+            models.Index(fields=["diagnosis_code"], name="idx_pat_conditions_code"),
+        ]

@@ -1,5 +1,11 @@
 from .patient_access_selectors import get_patient_access_grant_by_id, list_patient_access_grants
 from .patient_address_selectors import get_patient_address_by_id, list_patient_addresses
+from .clinical_history_selectors import (
+    get_patient_allergy_by_id,
+    get_patient_condition_by_id,
+    list_patient_allergies,
+    list_patient_conditions,
+)
 from .patient_identifier_selectors import (
     get_identifier_type_by_id,
     get_patient_identifier_by_id,
@@ -31,8 +37,10 @@ from .relationship_selectors import (
 __all__ = [
     "get_identifier_type_by_id",
     "get_patient_access_grant_by_id",
+    "get_patient_allergy_by_id",
     "get_patient_address_by_id",
     "get_patient_by_id",
+    "get_patient_condition_by_id",
     "get_authenticated_patient",
     "get_checkin_eligibility",
     "get_current_patient_queue_entry",
@@ -43,7 +51,9 @@ __all__ = [
     "get_relationship_type_by_id",
     "list_identifier_types",
     "list_patient_access_grants",
+    "list_patient_allergies",
     "list_patient_addresses",
+    "list_patient_conditions",
     "list_patient_identifiers",
     "list_patient_queue_entries",
     "list_patients",

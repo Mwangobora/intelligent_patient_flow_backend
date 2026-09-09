@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "apps.practitioners",
     "apps.scheduling",
     "apps.queueing",
+    "apps.clinical",
     "apps.checkins",
     "apps.notifications",
     "apps.reporting",

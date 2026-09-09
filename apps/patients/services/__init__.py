@@ -20,6 +20,12 @@ from .patient_identifier_type_service import (
     deactivate_patient_identifier_type,
     update_patient_identifier_type,
 )
+from .clinical_history_service import (
+    create_patient_allergy,
+    create_patient_condition,
+    update_patient_allergy,
+    update_patient_condition,
+)
 from .patient_number_service import generate_patient_number
 from .patient_related_person_service import (
     add_related_person,
@@ -55,6 +61,8 @@ __all__ = [
     "create_patient",
     "create_mobile_account_for_existing_patient",
     "claim_existing_patient_record",
+    "create_patient_allergy",
+    "create_patient_condition",
     "create_patient_identifier_type",
     "create_relationship_type",
     "deactivate_patient",
@@ -77,7 +85,9 @@ __all__ = [
     "update_patient",
     "normalize_mobile_phone",
     "update_current_patient_profile",
+    "update_patient_allergy",
     "update_patient_address",
+    "update_patient_condition",
     "update_patient_identifier_type",
     "update_related_person",
     "update_relationship_type",

@@ -15,6 +15,14 @@ from .identifier_serializers import (
     PatientIdentifierTypeListSerializer,
     PatientIdentifierTypeUpdateSerializer,
 )
+from .clinical_history_serializers import (
+    PatientAllergyCreateSerializer,
+    PatientAllergyDetailSerializer,
+    PatientAllergyUpdateSerializer,
+    PatientConditionCreateSerializer,
+    PatientConditionDetailSerializer,
+    PatientConditionUpdateSerializer,
+)
 from .patient_serializers import (
     PatientCreateSerializer,
     PatientDetailSerializer,
@@ -63,6 +71,9 @@ __all__ = [
     "PatientAccessGrantDetailSerializer",
     "PatientAccessGrantReactivateSerializer",
     "PatientAccessGrantRevokeSerializer",
+    "PatientAllergyCreateSerializer",
+    "PatientAllergyDetailSerializer",
+    "PatientAllergyUpdateSerializer",
     "PatientAppointmentCheckinResponseSerializer",
     "PatientAppointmentSummarySerializer",
     "PatientAddressCreateSerializer",
@@ -72,6 +83,9 @@ __all__ = [
     "PatientCheckinEligibilitySerializer",
     "PatientClaimExistingRecordResponseSerializer",
     "PatientClaimExistingRecordSerializer",
+    "PatientConditionCreateSerializer",
+    "PatientConditionDetailSerializer",
+    "PatientConditionUpdateSerializer",
     "PatientCreateMobileAccountSerializer",
     "PatientFacilityQrConsumeInputSerializer",
     "PatientMobileAppointmentCancelSerializer",
