@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.queueing",
     "apps.clinical",
     "apps.laboratory",
+    "apps.pharmacy",
     "apps.checkins",
     "apps.notifications",
     "apps.reporting",
@@ -167,6 +168,10 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "Laboratory APIs",
             "description": "Lab tests, orders, specimens, results, and verification.",
+        },
+        {
+            "name": "Pharmacy APIs",
+            "description": "Medications, prescriptions, dispensing, and pharmacy review.",
         },
         {
             "name": "Intelligence APIs",
