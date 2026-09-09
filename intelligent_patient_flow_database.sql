@@ -1482,6 +1482,1565 @@ CREATE TABLE report_exports (
 );
 
 -- ================================================================
+-- CLINICAL ENCOUNTERS
+-- ================================================================
+
+CREATE TABLE encounters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    patient_checkin_id UUID NOT NULL REFERENCES patient_checkins(id) ON DELETE RESTRICT,
+    appointment_id UUID REFERENCES appointments(id) ON DELETE RESTRICT,
+    department_id UUID REFERENCES departments(id) ON DELETE RESTRICT,
+    facility_specialty_id UUID REFERENCES facility_specialties(id) ON DELETE RESTRICT,
+    attending_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    encounter_number VARCHAR(50) NOT NULL,
+    encounter_type VARCHAR(30) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'opened',
+    opened_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    opened_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    completed_at TIMESTAMPTZ,
+    completed_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    cancelled_at TIMESTAMPTZ,
+    cancelled_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    cancellation_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_encounters_facility_number UNIQUE (facility_id, encounter_number),
+    CONSTRAINT ck_encounters_type CHECK (
+        encounter_type IN ('outpatient', 'emergency', 'inpatient', 'follow_up', 'telemedicine')
+    ),
+    CONSTRAINT ck_encounters_status CHECK (
+        status IN (
+            'opened', 'triage', 'waiting_practitioner', 'in_consultation',
+            'awaiting_lab', 'awaiting_imaging', 'awaiting_review',
+            'awaiting_pharmacy', 'awaiting_payment', 'admitted',
+            'completed', 'cancelled'
+        )
+    ),
+    CONSTRAINT ck_encounters_completion CHECK (
+        (status <> 'completed' AND completed_at IS NULL AND completed_by_id IS NULL)
+        OR (status = 'completed' AND completed_at IS NOT NULL)
+    ),
+    CONSTRAINT ck_encounters_cancellation CHECK (
+        (status <> 'cancelled' AND cancelled_at IS NULL AND cancelled_by_id IS NULL AND cancellation_reason IS NULL)
+        OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX uq_encounters_active_checkin
+    ON encounters (patient_checkin_id)
+    WHERE status NOT IN ('completed', 'cancelled');
+
+CREATE TABLE encounter_status_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    from_status VARCHAR(30),
+    to_status VARCHAR(30) NOT NULL,
+    change_source VARCHAR(30) NOT NULL DEFAULT 'system',
+    changed_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    reason VARCHAR(250),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_encounter_status_history_statuses CHECK (
+        (from_status IS NULL OR from_status IN (
+            'opened', 'triage', 'waiting_practitioner', 'in_consultation',
+            'awaiting_lab', 'awaiting_imaging', 'awaiting_review',
+            'awaiting_pharmacy', 'awaiting_payment', 'admitted',
+            'completed', 'cancelled'
+        ))
+        AND to_status IN (
+            'opened', 'triage', 'waiting_practitioner', 'in_consultation',
+            'awaiting_lab', 'awaiting_imaging', 'awaiting_review',
+            'awaiting_pharmacy', 'awaiting_payment', 'admitted',
+            'completed', 'cancelled'
+        )
+    ),
+    CONSTRAINT ck_encounter_status_history_source CHECK (
+        change_source IN ('system', 'reception', 'triage', 'clinical', 'lab', 'imaging', 'pharmacy', 'billing', 'admin')
+    )
+);
+
+CREATE UNIQUE INDEX uq_encounter_status_history_initial
+    ON encounter_status_history (encounter_id)
+    WHERE from_status IS NULL;
+
+-- ================================================================
+-- TRIAGE AND VITAL SIGNS
+-- ================================================================
+
+CREATE TABLE triage_assessments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    performed_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    triage_level SMALLINT NOT NULL,
+    chief_complaint_encrypted TEXT,
+    pain_score SMALLINT,
+    mobility_status VARCHAR(30),
+    consciousness_level VARCHAR(30),
+    notes_encrypted TEXT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_triage_assessments_level CHECK (triage_level BETWEEN 1 AND 4),
+    CONSTRAINT ck_triage_assessments_pain CHECK (pain_score IS NULL OR pain_score BETWEEN 0 AND 10),
+    CONSTRAINT ck_triage_assessments_time CHECK (completed_at IS NULL OR completed_at >= started_at)
+);
+
+CREATE TABLE vital_signs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    recorded_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    temperature_c NUMERIC(4,1),
+    systolic_bp SMALLINT,
+    diastolic_bp SMALLINT,
+    heart_rate SMALLINT,
+    respiratory_rate SMALLINT,
+    oxygen_saturation SMALLINT,
+    weight_kg NUMERIC(6,2),
+    height_cm NUMERIC(6,2),
+    blood_glucose NUMERIC(6,2),
+    pain_score SMALLINT,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_vital_signs_temperature CHECK (temperature_c IS NULL OR temperature_c > 0),
+    CONSTRAINT ck_vital_signs_bp CHECK (
+        (systolic_bp IS NULL OR systolic_bp > 0)
+        AND (diastolic_bp IS NULL OR diastolic_bp > 0)
+        AND (systolic_bp IS NULL OR diastolic_bp IS NULL OR systolic_bp >= diastolic_bp)
+    ),
+    CONSTRAINT ck_vital_signs_rates CHECK (
+        (heart_rate IS NULL OR heart_rate > 0)
+        AND (respiratory_rate IS NULL OR respiratory_rate > 0)
+    ),
+    CONSTRAINT ck_vital_signs_oxygen CHECK (oxygen_saturation IS NULL OR oxygen_saturation BETWEEN 0 AND 100),
+    CONSTRAINT ck_vital_signs_body CHECK (
+        (weight_kg IS NULL OR weight_kg > 0)
+        AND (height_cm IS NULL OR height_cm > 0)
+    ),
+    CONSTRAINT ck_vital_signs_glucose CHECK (blood_glucose IS NULL OR blood_glucose >= 0),
+    CONSTRAINT ck_vital_signs_pain CHECK (pain_score IS NULL OR pain_score BETWEEN 0 AND 10)
+);
+
+-- ================================================================
+-- PATIENT CLINICAL HISTORY
+-- ================================================================
+
+CREATE TABLE patient_allergies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    allergen VARCHAR(150) NOT NULL,
+    allergy_type VARCHAR(50),
+    reaction VARCHAR(250),
+    severity VARCHAR(30),
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    recorded_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_patient_allergies_status CHECK (
+        status IN ('active', 'inactive', 'resolved', 'entered_in_error')
+    ),
+    CONSTRAINT ck_patient_allergies_resolution CHECK (
+        resolved_at IS NULL OR resolved_at >= recorded_at
+    )
+);
+
+CREATE TABLE patient_conditions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    diagnosis_code_id UUID,
+    condition_name VARCHAR(200) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    onset_date DATE,
+    resolved_date DATE,
+    notes_encrypted TEXT,
+    recorded_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_patient_conditions_status CHECK (
+        status IN ('active', 'inactive', 'resolved', 'entered_in_error')
+    ),
+    CONSTRAINT ck_patient_conditions_dates CHECK (
+        resolved_date IS NULL OR onset_date IS NULL OR resolved_date >= onset_date
+    )
+);
+
+-- ================================================================
+-- CLINICAL NOTES AND DIAGNOSES
+-- ================================================================
+
+CREATE TABLE clinical_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    note_type VARCHAR(30) NOT NULL,
+    subjective_encrypted TEXT,
+    objective_encrypted TEXT,
+    assessment_encrypted TEXT,
+    plan_encrypted TEXT,
+    supersedes_note_id UUID REFERENCES clinical_notes(id) ON DELETE RESTRICT,
+    signed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_clinical_notes_type CHECK (
+        note_type IN ('consultation', 'progress', 'review', 'specialist', 'discharge_note', 'addendum')
+    ),
+    CONSTRAINT ck_clinical_notes_supersede CHECK (supersedes_note_id IS NULL OR supersedes_note_id <> id)
+);
+
+CREATE TABLE diagnosis_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coding_system VARCHAR(30) NOT NULL,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(250) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_diagnosis_codes_system_code UNIQUE (coding_system, code)
+);
+
+ALTER TABLE patient_conditions
+    ADD CONSTRAINT fk_patient_conditions_diagnosis_code
+    FOREIGN KEY (diagnosis_code_id) REFERENCES diagnosis_codes(id) ON DELETE RESTRICT;
+
+CREATE TABLE encounter_diagnoses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    diagnosis_code_id UUID REFERENCES diagnosis_codes(id) ON DELETE RESTRICT,
+    diagnosis_text VARCHAR(250) NOT NULL,
+    diagnosis_type VARCHAR(30) NOT NULL,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    diagnosed_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    notes_encrypted TEXT,
+    diagnosed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_encounter_diagnoses_type CHECK (
+        diagnosis_type IN ('provisional', 'differential', 'confirmed')
+    )
+);
+
+CREATE UNIQUE INDEX uq_encounter_diagnoses_primary
+    ON encounter_diagnoses (encounter_id)
+    WHERE is_primary;
+
+-- ================================================================
+-- BILLING SERVICE CATALOGUE
+-- ================================================================
+
+CREATE TABLE services (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    service_category VARCHAR(30) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_services_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_services_code_upper CHECK (code = UPPER(code)),
+    CONSTRAINT ck_services_category CHECK (
+        service_category IN ('consultation', 'laboratory', 'imaging', 'procedure', 'pharmacy', 'admission', 'bed', 'other')
+    )
+);
+
+CREATE TABLE service_prices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE RESTRICT,
+    facility_id UUID REFERENCES facilities(id) ON DELETE RESTRICT,
+    amount NUMERIC(18,2) NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'TZS',
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_service_prices_amount CHECK (amount >= 0),
+    CONSTRAINT ck_service_prices_currency_upper CHECK (currency = UPPER(currency)),
+    CONSTRAINT ck_service_prices_dates CHECK (effective_to IS NULL OR effective_to >= effective_from),
+    EXCLUDE USING gist (
+        service_id WITH =,
+        facility_id WITH =,
+        daterange(effective_from, COALESCE(effective_to, 'infinity'::DATE), '[]') WITH &&
+    ) WHERE (is_active AND facility_id IS NOT NULL),
+    EXCLUDE USING gist (
+        service_id WITH =,
+        daterange(effective_from, COALESCE(effective_to, 'infinity'::DATE), '[]') WITH &&
+    ) WHERE (is_active AND facility_id IS NULL)
+);
+
+CREATE TABLE encounter_charges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE RESTRICT,
+    quantity NUMERIC(12,2) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(18,2) NOT NULL,
+    amount NUMERIC(18,2) NOT NULL,
+    source_type VARCHAR(30) NOT NULL,
+    source_reference_id UUID,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    performed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    voided_at TIMESTAMPTZ,
+    voided_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    void_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_encounter_charges_money CHECK (
+        quantity > 0 AND unit_price >= 0 AND amount >= 0
+    ),
+    CONSTRAINT ck_encounter_charges_amount CHECK (amount = ROUND(quantity * unit_price, 2)),
+    CONSTRAINT ck_encounter_charges_source CHECK (
+        source_type IN ('consultation', 'lab', 'imaging', 'procedure', 'pharmacy', 'bed', 'manual')
+    ),
+    CONSTRAINT ck_encounter_charges_status CHECK (status IN ('pending', 'posted', 'voided')),
+    CONSTRAINT ck_encounter_charges_void CHECK (
+        (status <> 'voided' AND voided_at IS NULL AND voided_by_id IS NULL AND void_reason IS NULL)
+        OR (status = 'voided' AND voided_at IS NOT NULL AND void_reason IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX uq_encounter_charges_source
+    ON encounter_charges (encounter_id, service_id, source_type, source_reference_id)
+    WHERE source_reference_id IS NOT NULL AND status <> 'voided';
+
+-- ================================================================
+-- LABORATORY
+-- ================================================================
+
+CREATE TABLE lab_tests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    specimen_type VARCHAR(80),
+    turnaround_minutes INTEGER,
+    billing_service_id UUID REFERENCES services(id) ON DELETE RESTRICT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_lab_tests_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_lab_tests_code_upper CHECK (code = UPPER(code)),
+    CONSTRAINT ck_lab_tests_turnaround CHECK (turnaround_minutes IS NULL OR turnaround_minutes > 0)
+);
+
+CREATE TABLE lab_test_components (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lab_test_id UUID NOT NULL REFERENCES lab_tests(id) ON DELETE CASCADE,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    unit VARCHAR(50),
+    reference_low NUMERIC(18,4),
+    reference_high NUMERIC(18,4),
+    display_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_lab_test_components_test_code UNIQUE (lab_test_id, code),
+    CONSTRAINT ck_lab_test_components_code_upper CHECK (code = UPPER(code)),
+    CONSTRAINT ck_lab_test_components_reference CHECK (
+        reference_low IS NULL OR reference_high IS NULL OR reference_high >= reference_low
+    ),
+    CONSTRAINT ck_lab_test_components_order CHECK (display_order >= 0)
+);
+
+CREATE TABLE lab_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    ordered_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    order_number VARCHAR(50) NOT NULL,
+    priority VARCHAR(20) NOT NULL DEFAULT 'routine',
+    clinical_notes_encrypted TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'ordered',
+    ordered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cancelled_at TIMESTAMPTZ,
+    cancelled_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    cancellation_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_lab_orders_number UNIQUE (order_number),
+    CONSTRAINT ck_lab_orders_priority CHECK (priority IN ('routine', 'urgent', 'stat')),
+    CONSTRAINT ck_lab_orders_status CHECK (
+        status IN ('ordered', 'sample_collection', 'processing', 'partially_resulted', 'resulted', 'verified', 'cancelled')
+    ),
+    CONSTRAINT ck_lab_orders_cancellation CHECK (
+        (status <> 'cancelled' AND cancelled_at IS NULL AND cancelled_by_id IS NULL AND cancellation_reason IS NULL)
+        OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL)
+    )
+);
+
+CREATE TABLE lab_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lab_order_id UUID NOT NULL REFERENCES lab_orders(id) ON DELETE RESTRICT,
+    lab_test_id UUID NOT NULL REFERENCES lab_tests(id) ON DELETE RESTRICT,
+    status VARCHAR(30) NOT NULL DEFAULT 'ordered',
+    ordered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    collected_at TIMESTAMPTZ,
+    processing_started_at TIMESTAMPTZ,
+    resulted_at TIMESTAMPTZ,
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_lab_order_items_order_test UNIQUE (lab_order_id, lab_test_id),
+    CONSTRAINT ck_lab_order_items_status CHECK (
+        status IN ('ordered', 'sample_collection', 'processing', 'resulted', 'verified', 'cancelled')
+    )
+);
+
+CREATE TABLE lab_specimens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lab_order_item_id UUID NOT NULL REFERENCES lab_order_items(id) ON DELETE RESTRICT,
+    specimen_number VARCHAR(80) NOT NULL,
+    specimen_type VARCHAR(80) NOT NULL,
+    collected_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    collected_at TIMESTAMPTZ,
+    received_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    received_at TIMESTAMPTZ,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    rejection_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_lab_specimens_number UNIQUE (specimen_number),
+    CONSTRAINT ck_lab_specimens_status CHECK (
+        status IN ('pending', 'collected', 'received', 'rejected', 'processing', 'disposed')
+    ),
+    CONSTRAINT ck_lab_specimens_rejection CHECK (
+        (status <> 'rejected' AND rejection_reason IS NULL)
+        OR (status = 'rejected' AND rejection_reason IS NOT NULL)
+    )
+);
+
+CREATE TABLE lab_result_values (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lab_order_item_id UUID NOT NULL REFERENCES lab_order_items(id) ON DELETE RESTRICT,
+    lab_test_component_id UUID REFERENCES lab_test_components(id) ON DELETE RESTRICT,
+    value_numeric NUMERIC(18,4),
+    value_text TEXT,
+    unit VARCHAR(50),
+    reference_low NUMERIC(18,4),
+    reference_high NUMERIC(18,4),
+    abnormal_flag VARCHAR(20) NOT NULL DEFAULT 'normal',
+    entered_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    entered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    verified_at TIMESTAMPTZ,
+    notes_encrypted TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_lab_result_values_value CHECK (
+        (value_numeric IS NOT NULL AND value_text IS NULL)
+        OR (value_numeric IS NULL AND value_text IS NOT NULL)
+    ),
+    CONSTRAINT ck_lab_result_values_reference CHECK (
+        reference_low IS NULL OR reference_high IS NULL OR reference_high >= reference_low
+    ),
+    CONSTRAINT ck_lab_result_values_abnormal CHECK (
+        abnormal_flag IN ('normal', 'low', 'high', 'critical')
+    ),
+    CONSTRAINT ck_lab_result_values_verification CHECK (
+        (verified_at IS NULL AND verified_by_practitioner_facility_assignment_id IS NULL)
+        OR (verified_at IS NOT NULL AND verified_by_practitioner_facility_assignment_id IS NOT NULL)
+    )
+);
+
+-- ================================================================
+-- IMAGING, RADIOLOGY, AND PROCEDURES
+-- ================================================================
+
+CREATE TABLE imaging_services (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    billing_service_id UUID REFERENCES services(id) ON DELETE RESTRICT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_imaging_services_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_imaging_services_code_upper CHECK (code = UPPER(code))
+);
+
+CREATE TABLE imaging_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    ordered_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    order_number VARCHAR(50) NOT NULL,
+    clinical_indication_encrypted TEXT,
+    priority VARCHAR(20) NOT NULL DEFAULT 'routine',
+    status VARCHAR(30) NOT NULL DEFAULT 'ordered',
+    ordered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cancelled_at TIMESTAMPTZ,
+    cancellation_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_imaging_orders_number UNIQUE (order_number),
+    CONSTRAINT ck_imaging_orders_priority CHECK (priority IN ('routine', 'urgent', 'stat')),
+    CONSTRAINT ck_imaging_orders_status CHECK (
+        status IN ('ordered', 'scheduled', 'performed', 'reported', 'verified', 'cancelled')
+    ),
+    CONSTRAINT ck_imaging_orders_cancellation CHECK (
+        (status <> 'cancelled' AND cancelled_at IS NULL AND cancellation_reason IS NULL)
+        OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL)
+    )
+);
+
+CREATE TABLE imaging_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    imaging_order_id UUID NOT NULL REFERENCES imaging_orders(id) ON DELETE RESTRICT,
+    imaging_service_id UUID NOT NULL REFERENCES imaging_services(id) ON DELETE RESTRICT,
+    body_site VARCHAR(150),
+    status VARCHAR(30) NOT NULL DEFAULT 'ordered',
+    performed_at TIMESTAMPTZ,
+    performed_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_imaging_order_items_status CHECK (
+        status IN ('ordered', 'scheduled', 'performed', 'reported', 'verified', 'cancelled')
+    )
+);
+
+CREATE TABLE imaging_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    imaging_order_item_id UUID NOT NULL REFERENCES imaging_order_items(id) ON DELETE RESTRICT,
+    findings_encrypted TEXT,
+    impression_encrypted TEXT,
+    reported_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    reported_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_imaging_reports_verification CHECK (
+        (verified_at IS NULL AND verified_by_practitioner_facility_assignment_id IS NULL)
+        OR (verified_at IS NOT NULL AND verified_by_practitioner_facility_assignment_id IS NOT NULL)
+    )
+);
+
+CREATE TABLE procedure_catalog (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    billing_service_id UUID REFERENCES services(id) ON DELETE RESTRICT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_procedure_catalog_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_procedure_catalog_code_upper CHECK (code = UPPER(code))
+);
+
+CREATE TABLE encounter_procedures (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    procedure_id UUID NOT NULL REFERENCES procedure_catalog(id) ON DELETE RESTRICT,
+    ordered_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    performed_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    status VARCHAR(30) NOT NULL DEFAULT 'performed',
+    performed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    clinical_notes_encrypted TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_encounter_procedures_status CHECK (
+        status IN ('ordered', 'performed', 'cancelled', 'entered_in_error')
+    )
+);
+
+-- ================================================================
+-- PHARMACY CATALOGUE AND GENERIC INVENTORY
+-- ================================================================
+
+CREATE TABLE medications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    generic_name VARCHAR(200) NOT NULL,
+    brand_name VARCHAR(200),
+    strength VARCHAR(80),
+    strength_unit VARCHAR(50),
+    dosage_form VARCHAR(80),
+    route_default VARCHAR(80),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_medications_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_medications_code_upper CHECK (code = UPPER(code))
+);
+
+CREATE TABLE prescriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    prescription_number VARCHAR(50) NOT NULL,
+    prescribed_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    prescribed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cancelled_at TIMESTAMPTZ,
+    cancelled_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    cancellation_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_prescriptions_number UNIQUE (prescription_number),
+    CONSTRAINT ck_prescriptions_status CHECK (
+        status IN ('draft', 'active', 'partially_dispensed', 'dispensed', 'cancelled')
+    ),
+    CONSTRAINT ck_prescriptions_cancellation CHECK (
+        (status <> 'cancelled' AND cancelled_at IS NULL AND cancelled_by_id IS NULL AND cancellation_reason IS NULL)
+        OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL)
+    )
+);
+
+CREATE TABLE prescription_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    prescription_id UUID NOT NULL REFERENCES prescriptions(id) ON DELETE RESTRICT,
+    medication_id UUID NOT NULL REFERENCES medications(id) ON DELETE RESTRICT,
+    dose NUMERIC(12,3),
+    dose_unit VARCHAR(50),
+    route VARCHAR(80),
+    frequency VARCHAR(100) NOT NULL,
+    duration_value INTEGER,
+    duration_unit VARCHAR(30),
+    quantity_prescribed NUMERIC(12,3) NOT NULL,
+    instructions_encrypted TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_prescription_items_dose CHECK (dose IS NULL OR dose > 0),
+    CONSTRAINT ck_prescription_items_duration CHECK (duration_value IS NULL OR duration_value > 0),
+    CONSTRAINT ck_prescription_items_quantity CHECK (quantity_prescribed > 0)
+);
+
+CREATE TABLE inventory_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_inventory_categories_code_upper CHECK (code = UPPER(code))
+);
+
+CREATE UNIQUE INDEX uq_inventory_categories_global_code
+    ON inventory_categories (code)
+    WHERE organization_id IS NULL;
+
+CREATE UNIQUE INDEX uq_inventory_categories_org_code
+    ON inventory_categories (organization_id, code)
+    WHERE organization_id IS NOT NULL;
+
+CREATE TABLE inventory_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    category_id UUID NOT NULL REFERENCES inventory_categories(id) ON DELETE RESTRICT,
+    medication_id UUID REFERENCES medications(id) ON DELETE RESTRICT,
+    sku VARCHAR(80) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    base_unit VARCHAR(50) NOT NULL,
+    reorder_level NUMERIC(12,3) NOT NULL DEFAULT 0,
+    is_stock_item BOOLEAN NOT NULL DEFAULT TRUE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_inventory_items_org_sku UNIQUE (organization_id, sku),
+    CONSTRAINT ck_inventory_items_sku_upper CHECK (sku = UPPER(sku)),
+    CONSTRAINT ck_inventory_items_reorder CHECK (reorder_level >= 0)
+);
+
+CREATE TABLE inventory_locations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    department_id UUID REFERENCES departments(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    location_type VARCHAR(30) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_inventory_locations_facility_code UNIQUE (facility_id, code),
+    CONSTRAINT ck_inventory_locations_code_upper CHECK (code = UPPER(code)),
+    CONSTRAINT ck_inventory_locations_type CHECK (
+        location_type IN ('main_store', 'pharmacy', 'laboratory', 'ward', 'theatre', 'department_store')
+    )
+);
+
+CREATE TABLE stock_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inventory_item_id UUID NOT NULL REFERENCES inventory_items(id) ON DELETE RESTRICT,
+    inventory_location_id UUID NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT,
+    batch_number VARCHAR(100) NOT NULL,
+    expiry_date DATE,
+    purchase_unit_cost NUMERIC(18,2) NOT NULL DEFAULT 0,
+    selling_unit_price NUMERIC(18,2),
+    quantity_on_hand NUMERIC(12,3) NOT NULL DEFAULT 0,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_stock_batches_item_location_batch UNIQUE (inventory_item_id, inventory_location_id, batch_number),
+    CONSTRAINT ck_stock_batches_money CHECK (
+        purchase_unit_cost >= 0 AND (selling_unit_price IS NULL OR selling_unit_price >= 0)
+    ),
+    CONSTRAINT ck_stock_batches_quantity CHECK (quantity_on_hand >= 0),
+    CONSTRAINT ck_stock_batches_expiry CHECK (expiry_date IS NULL OR expiry_date >= received_at::DATE)
+);
+
+CREATE TABLE stock_movements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    stock_batch_id UUID NOT NULL REFERENCES stock_batches(id) ON DELETE RESTRICT,
+    inventory_location_id UUID NOT NULL REFERENCES inventory_locations(id) ON DELETE RESTRICT,
+    movement_type VARCHAR(30) NOT NULL,
+    quantity_delta NUMERIC(12,3) NOT NULL,
+    reference_type VARCHAR(80),
+    reference_id UUID,
+    performed_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    reason VARCHAR(250),
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_stock_movements_type CHECK (
+        movement_type IN ('receipt', 'dispense', 'issue', 'transfer_in', 'transfer_out', 'return', 'adjustment', 'expired', 'damaged')
+    ),
+    CONSTRAINT ck_stock_movements_delta CHECK (quantity_delta <> 0)
+);
+
+CREATE TABLE medication_dispenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    prescription_item_id UUID NOT NULL REFERENCES prescription_items(id) ON DELETE RESTRICT,
+    stock_batch_id UUID REFERENCES stock_batches(id) ON DELETE RESTRICT,
+    quantity_dispensed NUMERIC(12,3) NOT NULL,
+    dispensed_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    dispensed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(30) NOT NULL DEFAULT 'dispensed',
+    notes_encrypted TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_medication_dispenses_quantity CHECK (quantity_dispensed > 0),
+    CONSTRAINT ck_medication_dispenses_status CHECK (
+        status IN ('pending', 'partially_dispensed', 'dispensed', 'cancelled')
+    )
+);
+
+-- ================================================================
+-- INVOICING, PAYMENTS, AND INSURANCE
+-- ================================================================
+
+CREATE TABLE invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    encounter_id UUID REFERENCES encounters(id) ON DELETE RESTRICT,
+    invoice_number VARCHAR(50) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    subtotal NUMERIC(18,2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    paid_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    balance_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    issued_at TIMESTAMPTZ,
+    due_at TIMESTAMPTZ,
+    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_invoices_facility_number UNIQUE (facility_id, invoice_number),
+    CONSTRAINT ck_invoices_status CHECK (
+        status IN ('draft', 'issued', 'partially_paid', 'paid', 'cancelled')
+    ),
+    CONSTRAINT ck_invoices_money CHECK (
+        subtotal >= 0 AND discount_amount >= 0 AND tax_amount >= 0
+        AND total_amount >= 0 AND paid_amount >= 0 AND balance_amount >= 0
+    ),
+    CONSTRAINT ck_invoices_totals CHECK (
+        total_amount = subtotal - discount_amount + tax_amount
+        AND balance_amount = total_amount - paid_amount
+    ),
+    CONSTRAINT ck_invoices_issued CHECK (status = 'draft' OR issued_at IS NOT NULL),
+    CONSTRAINT ck_invoices_due CHECK (due_at IS NULL OR issued_at IS NULL OR due_at >= issued_at)
+);
+
+CREATE TABLE invoice_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+    encounter_charge_id UUID REFERENCES encounter_charges(id) ON DELETE RESTRICT,
+    service_id UUID REFERENCES services(id) ON DELETE RESTRICT,
+    description VARCHAR(250) NOT NULL,
+    quantity NUMERIC(12,2) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(18,2) NOT NULL,
+    discount_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    line_total NUMERIC(18,2) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_invoice_items_money CHECK (
+        quantity > 0 AND unit_price >= 0 AND discount_amount >= 0 AND tax_amount >= 0 AND line_total >= 0
+    ),
+    CONSTRAINT ck_invoice_items_total CHECK (
+        line_total = ROUND(quantity * unit_price, 2) - discount_amount + tax_amount
+    )
+);
+
+CREATE TABLE payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    payment_number VARCHAR(50) NOT NULL,
+    amount NUMERIC(18,2) NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'TZS',
+    payment_method VARCHAR(30) NOT NULL,
+    transaction_reference VARCHAR(150),
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    received_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_payments_facility_number UNIQUE (facility_id, payment_number),
+    CONSTRAINT ck_payments_amount CHECK (amount > 0),
+    CONSTRAINT ck_payments_currency_upper CHECK (currency = UPPER(currency)),
+    CONSTRAINT ck_payments_method CHECK (
+        payment_method IN ('cash', 'mobile_money', 'card', 'bank', 'insurance', 'other')
+    ),
+    CONSTRAINT ck_payments_status CHECK (status IN ('pending', 'completed', 'failed', 'reversed'))
+);
+
+CREATE TABLE payment_allocations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+    amount NUMERIC(18,2) NOT NULL,
+    allocated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_payment_allocations_payment_invoice UNIQUE (payment_id, invoice_id),
+    CONSTRAINT ck_payment_allocations_amount CHECK (amount > 0)
+);
+
+CREATE TABLE payment_refunds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE RESTRICT,
+    amount NUMERIC(18,2) NOT NULL,
+    reason VARCHAR(250) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    requested_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    refunded_at TIMESTAMPTZ,
+    transaction_reference VARCHAR(150),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_payment_refunds_amount CHECK (amount > 0),
+    CONSTRAINT ck_payment_refunds_status CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'cancelled')),
+    CONSTRAINT ck_payment_refunds_completion CHECK (status <> 'completed' OR refunded_at IS NOT NULL)
+);
+
+CREATE TABLE insurance_providers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    email CITEXT,
+    phone_number VARCHAR(30),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_insurance_providers_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_insurance_providers_code_upper CHECK (code = UPPER(code)),
+    CONSTRAINT ck_insurance_providers_phone CHECK (
+        phone_number IS NULL OR phone_number ~ '^\+[1-9][0-9]{7,14}$'
+    )
+);
+
+CREATE TABLE insurance_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    insurance_provider_id UUID NOT NULL REFERENCES insurance_providers(id) ON DELETE RESTRICT,
+    plan_code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_insurance_plans_provider_code UNIQUE (insurance_provider_id, plan_code)
+);
+
+CREATE TABLE patient_insurance_policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
+    insurance_plan_id UUID NOT NULL REFERENCES insurance_plans(id) ON DELETE RESTRICT,
+    membership_number_encrypted TEXT NOT NULL,
+    membership_number_hash CHAR(64) NOT NULL,
+    valid_from DATE NOT NULL,
+    valid_until DATE,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_patient_insurance_membership_hash UNIQUE (membership_number_hash),
+    CONSTRAINT ck_patient_insurance_policy_hash CHECK (membership_number_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_patient_insurance_policy_dates CHECK (valid_until IS NULL OR valid_until >= valid_from),
+    CONSTRAINT ck_patient_insurance_policy_status CHECK (
+        status IN ('active', 'expired', 'cancelled', 'suspended')
+    )
+);
+
+CREATE UNIQUE INDEX uq_patient_insurance_primary
+    ON patient_insurance_policies (patient_id)
+    WHERE is_primary AND status = 'active';
+
+CREATE TABLE insurance_claims (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_insurance_policy_id UUID NOT NULL REFERENCES patient_insurance_policies(id) ON DELETE RESTRICT,
+    invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE RESTRICT,
+    claim_number VARCHAR(80) NOT NULL,
+    claimed_amount NUMERIC(18,2) NOT NULL,
+    approved_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    rejected_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    submitted_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_insurance_claims_number UNIQUE (claim_number),
+    CONSTRAINT ck_insurance_claims_money CHECK (
+        claimed_amount >= 0 AND approved_amount >= 0 AND rejected_amount >= 0
+    ),
+    CONSTRAINT ck_insurance_claims_status CHECK (
+        status IN ('draft', 'submitted', 'processing', 'approved', 'partially_approved', 'rejected', 'paid', 'cancelled')
+    )
+);
+
+CREATE TABLE insurance_claim_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    insurance_claim_id UUID NOT NULL REFERENCES insurance_claims(id) ON DELETE RESTRICT,
+    invoice_item_id UUID NOT NULL REFERENCES invoice_items(id) ON DELETE RESTRICT,
+    claimed_amount NUMERIC(18,2) NOT NULL,
+    approved_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    rejected_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    rejection_reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_insurance_claim_items_invoice_item UNIQUE (insurance_claim_id, invoice_item_id),
+    CONSTRAINT ck_insurance_claim_items_money CHECK (
+        claimed_amount >= 0 AND approved_amount >= 0 AND rejected_amount >= 0
+    )
+);
+
+-- ================================================================
+-- INPATIENT, WARDS, BEDS, AND NURSING
+-- ================================================================
+
+CREATE TABLE wards (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    department_id UUID REFERENCES departments(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    ward_type VARCHAR(50),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_wards_facility_code UNIQUE (facility_id, code),
+    CONSTRAINT ck_wards_code_upper CHECK (code = UPPER(code))
+);
+
+CREATE TABLE inpatient_rooms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ward_id UUID NOT NULL REFERENCES wards(id) ON DELETE RESTRICT,
+    room_number VARCHAR(50) NOT NULL,
+    room_type VARCHAR(50),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_inpatient_rooms_ward_number UNIQUE (ward_id, room_number)
+);
+
+CREATE TABLE beds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inpatient_room_id UUID NOT NULL REFERENCES inpatient_rooms(id) ON DELETE RESTRICT,
+    bed_number VARCHAR(50) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'available',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_beds_room_number UNIQUE (inpatient_room_id, bed_number),
+    CONSTRAINT ck_beds_status CHECK (
+        status IN ('available', 'occupied', 'reserved', 'cleaning', 'maintenance')
+    )
+);
+
+CREATE TABLE admissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    admission_number VARCHAR(50) NOT NULL,
+    admitted_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    admitted_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reason_encrypted TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'admitted',
+    discharged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_admissions_number UNIQUE (admission_number),
+    CONSTRAINT uq_admissions_encounter UNIQUE (encounter_id),
+    CONSTRAINT ck_admissions_status CHECK (
+        status IN ('admitted', 'transferred', 'discharged', 'deceased', 'cancelled')
+    ),
+    CONSTRAINT ck_admissions_discharge CHECK (
+        status NOT IN ('discharged', 'deceased') OR discharged_at IS NOT NULL
+    )
+);
+
+CREATE TABLE bed_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admission_id UUID NOT NULL REFERENCES admissions(id) ON DELETE RESTRICT,
+    bed_id UUID NOT NULL REFERENCES beds(id) ON DELETE RESTRICT,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    released_at TIMESTAMPTZ,
+    assigned_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_bed_assignments_time CHECK (released_at IS NULL OR released_at > assigned_at),
+    EXCLUDE USING gist (
+        bed_id WITH =,
+        tstzrange(assigned_at, COALESCE(released_at, 'infinity'::TIMESTAMPTZ), '[)') WITH &&
+    ),
+    EXCLUDE USING gist (
+        admission_id WITH =,
+        tstzrange(assigned_at, COALESCE(released_at, 'infinity'::TIMESTAMPTZ), '[)') WITH &&
+    )
+);
+
+CREATE TABLE nursing_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    admission_id UUID REFERENCES admissions(id) ON DELETE RESTRICT,
+    recorded_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    note_type VARCHAR(50) NOT NULL,
+    note_encrypted TEXT NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE medication_administrations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admission_id UUID NOT NULL REFERENCES admissions(id) ON DELETE RESTRICT,
+    prescription_item_id UUID NOT NULL REFERENCES prescription_items(id) ON DELETE RESTRICT,
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    administered_at TIMESTAMPTZ,
+    status VARCHAR(30) NOT NULL DEFAULT 'scheduled',
+    dose_given VARCHAR(80),
+    administered_by_practitioner_facility_assignment_id UUID
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    reason VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_medication_administrations_status CHECK (
+        status IN ('scheduled', 'given', 'refused', 'missed', 'held', 'cancelled')
+    ),
+    CONSTRAINT ck_medication_administrations_given CHECK (
+        status <> 'given' OR (administered_at IS NOT NULL AND administered_by_practitioner_facility_assignment_id IS NOT NULL)
+    )
+);
+
+CREATE TABLE discharge_summaries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    admission_id UUID NOT NULL REFERENCES admissions(id) ON DELETE RESTRICT,
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    prepared_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    admission_reason_encrypted TEXT,
+    final_diagnosis_encrypted TEXT,
+    treatment_summary_encrypted TEXT,
+    discharge_medications_encrypted TEXT,
+    follow_up_instructions_encrypted TEXT,
+    condition_at_discharge VARCHAR(100),
+    discharged_at TIMESTAMPTZ NOT NULL,
+    signed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_discharge_summaries_admission UNIQUE (admission_id)
+);
+
+-- ================================================================
+-- FOLLOW-UP AND REFERRALS
+-- ================================================================
+
+CREATE TABLE follow_up_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    follow_up_date DATE NOT NULL,
+    reason_encrypted TEXT,
+    specialty_id UUID REFERENCES specialties(id) ON DELETE RESTRICT,
+    appointment_id UUID REFERENCES appointments(id) ON DELETE RESTRICT,
+    status VARCHAR(30) NOT NULL DEFAULT 'planned',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_follow_up_plans_status CHECK (
+        status IN ('planned', 'booked', 'completed', 'cancelled')
+    )
+);
+
+CREATE TABLE patient_referrals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    encounter_id UUID NOT NULL REFERENCES encounters(id) ON DELETE RESTRICT,
+    referred_by_practitioner_facility_assignment_id UUID NOT NULL
+        REFERENCES practitioner_facility_assignments(id) ON DELETE RESTRICT,
+    referral_type VARCHAR(30) NOT NULL,
+    destination_facility_id UUID REFERENCES facilities(id) ON DELETE RESTRICT,
+    destination_department_id UUID REFERENCES departments(id) ON DELETE RESTRICT,
+    destination_specialty_id UUID REFERENCES specialties(id) ON DELETE RESTRICT,
+    external_facility_name VARCHAR(200),
+    reason_encrypted TEXT,
+    clinical_summary_encrypted TEXT,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_patient_referrals_type CHECK (referral_type IN ('internal', 'external')),
+    CONSTRAINT ck_patient_referrals_status CHECK (
+        status IN ('draft', 'sent', 'accepted', 'declined', 'completed', 'cancelled')
+    ),
+    CONSTRAINT ck_patient_referrals_destination CHECK (
+        (referral_type = 'internal' AND destination_facility_id IS NOT NULL AND external_facility_name IS NULL)
+        OR (referral_type = 'external' AND external_facility_name IS NOT NULL)
+    )
+);
+
+-- ================================================================
+-- HR, PAYROLL, PROCUREMENT, AND ACCOUNTING
+-- ================================================================
+
+CREATE TABLE employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    practitioner_id UUID REFERENCES practitioners(id) ON DELETE SET NULL,
+    employee_number VARCHAR(50) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    middle_name VARCHAR(100),
+    last_name VARCHAR(100) NOT NULL,
+    phone_number VARCHAR(30),
+    email CITEXT,
+    employment_status VARCHAR(30) NOT NULL DEFAULT 'active',
+    hire_date DATE NOT NULL,
+    termination_date DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_employees_org_number UNIQUE (organization_id, employee_number),
+    CONSTRAINT ck_employees_status CHECK (
+        employment_status IN ('active', 'suspended', 'terminated', 'retired')
+    ),
+    CONSTRAINT ck_employees_dates CHECK (termination_date IS NULL OR termination_date >= hire_date),
+    CONSTRAINT ck_employees_phone CHECK (
+        phone_number IS NULL OR phone_number ~ '^\+[1-9][0-9]{7,14}$'
+    )
+);
+
+CREATE TABLE employment_contracts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    contract_type VARCHAR(30) NOT NULL,
+    starts_on DATE NOT NULL,
+    ends_on DATE,
+    basic_salary NUMERIC(18,2) NOT NULL DEFAULT 0,
+    currency CHAR(3) NOT NULL DEFAULT 'TZS',
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_employment_contracts_type CHECK (
+        contract_type IN ('permanent', 'temporary', 'part_time', 'consultant', 'intern')
+    ),
+    CONSTRAINT ck_employment_contracts_status CHECK (
+        status IN ('draft', 'active', 'ended', 'cancelled')
+    ),
+    CONSTRAINT ck_employment_contracts_money CHECK (basic_salary >= 0),
+    CONSTRAINT ck_employment_contracts_currency_upper CHECK (currency = UPPER(currency)),
+    CONSTRAINT ck_employment_contracts_dates CHECK (ends_on IS NULL OR ends_on >= starts_on)
+);
+
+CREATE TABLE employee_facility_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    starts_on DATE NOT NULL,
+    ends_on DATE,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_employee_facility_assignments_dates CHECK (ends_on IS NULL OR ends_on >= starts_on)
+);
+
+CREATE UNIQUE INDEX uq_employee_primary_facility_assignment
+    ON employee_facility_assignments (employee_id)
+    WHERE is_primary AND is_active;
+
+CREATE TABLE employee_department_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_facility_assignment_id UUID NOT NULL REFERENCES employee_facility_assignments(id) ON DELETE RESTRICT,
+    department_id UUID NOT NULL REFERENCES departments(id) ON DELETE RESTRICT,
+    job_title VARCHAR(150) NOT NULL,
+    starts_on DATE NOT NULL,
+    ends_on DATE,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_employee_department_assignments_dates CHECK (ends_on IS NULL OR ends_on >= starts_on)
+);
+
+CREATE UNIQUE INDEX uq_employee_primary_department_assignment
+    ON employee_department_assignments (employee_facility_assignment_id)
+    WHERE is_primary AND is_active;
+
+CREATE TABLE employee_attendance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    clock_in TIMESTAMPTZ NOT NULL,
+    clock_out TIMESTAMPTZ,
+    attendance_source VARCHAR(30) NOT NULL DEFAULT 'manual',
+    recorded_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_employee_attendance_time CHECK (clock_out IS NULL OR clock_out >= clock_in),
+    CONSTRAINT ck_employee_attendance_source CHECK (
+        attendance_source IN ('manual', 'biometric', 'mobile', 'system')
+    )
+);
+
+CREATE TABLE employee_leave_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    leave_type VARCHAR(30) NOT NULL,
+    starts_on DATE NOT NULL,
+    ends_on DATE NOT NULL,
+    reason VARCHAR(250),
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+    approved_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_employee_leave_requests_type CHECK (
+        leave_type IN ('annual', 'sick', 'maternity', 'paternity', 'study', 'unpaid', 'other')
+    ),
+    CONSTRAINT ck_employee_leave_requests_status CHECK (
+        status IN ('pending', 'approved', 'rejected', 'cancelled')
+    ),
+    CONSTRAINT ck_employee_leave_requests_dates CHECK (ends_on >= starts_on),
+    CONSTRAINT ck_employee_leave_requests_approval CHECK (
+        status <> 'approved' OR (approved_by_id IS NOT NULL AND approved_at IS NOT NULL)
+    )
+);
+
+CREATE TABLE employee_shifts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    department_id UUID REFERENCES departments(id) ON DELETE RESTRICT,
+    starts_at TIMESTAMPTZ NOT NULL,
+    ends_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'scheduled',
+    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_employee_shifts_time CHECK (ends_at > starts_at),
+    CONSTRAINT ck_employee_shifts_status CHECK (
+        status IN ('scheduled', 'started', 'completed', 'cancelled')
+    )
+);
+
+CREATE TABLE payroll_periods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    period_name VARCHAR(100) NOT NULL,
+    starts_on DATE NOT NULL,
+    ends_on DATE NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'open',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_payroll_periods_org_name UNIQUE (organization_id, period_name),
+    CONSTRAINT ck_payroll_periods_status CHECK (
+        status IN ('open', 'processing', 'approved', 'paid', 'closed')
+    ),
+    CONSTRAINT ck_payroll_periods_dates CHECK (ends_on >= starts_on),
+    EXCLUDE USING gist (
+        organization_id WITH =,
+        daterange(starts_on, ends_on, '[]') WITH &&
+    ) WHERE (status <> 'closed')
+);
+
+CREATE TABLE payroll_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payroll_period_id UUID NOT NULL REFERENCES payroll_periods(id) ON DELETE RESTRICT,
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
+    basic_salary NUMERIC(18,2) NOT NULL DEFAULT 0,
+    gross_pay NUMERIC(18,2) NOT NULL DEFAULT 0,
+    total_deductions NUMERIC(18,2) NOT NULL DEFAULT 0,
+    net_pay NUMERIC(18,2) NOT NULL DEFAULT 0,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_payroll_entries_period_employee UNIQUE (payroll_period_id, employee_id),
+    CONSTRAINT ck_payroll_entries_money CHECK (
+        basic_salary >= 0 AND gross_pay >= 0 AND total_deductions >= 0 AND net_pay >= 0
+    ),
+    CONSTRAINT ck_payroll_entries_net CHECK (net_pay = gross_pay - total_deductions),
+    CONSTRAINT ck_payroll_entries_status CHECK (
+        status IN ('draft', 'calculated', 'approved', 'paid', 'cancelled')
+    )
+);
+
+CREATE TABLE payroll_entry_components (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payroll_entry_id UUID NOT NULL REFERENCES payroll_entries(id) ON DELETE RESTRICT,
+    component_type VARCHAR(30) NOT NULL,
+    description VARCHAR(200) NOT NULL,
+    amount NUMERIC(18,2) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_payroll_entry_components_type CHECK (
+        component_type IN ('allowance', 'overtime', 'bonus', 'tax', 'pension', 'loan', 'deduction', 'other')
+    ),
+    CONSTRAINT ck_payroll_entry_components_amount CHECK (amount >= 0)
+);
+
+CREATE TABLE suppliers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    supplier_code VARCHAR(50) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    email CITEXT,
+    phone_number VARCHAR(30),
+    address_encrypted TEXT,
+    tax_number_encrypted TEXT,
+    tax_number_hash CHAR(64),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_suppliers_org_code UNIQUE (organization_id, supplier_code),
+    CONSTRAINT ck_suppliers_code_upper CHECK (supplier_code = UPPER(supplier_code)),
+    CONSTRAINT ck_suppliers_tax_hash CHECK (tax_number_hash IS NULL OR tax_number_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT ck_suppliers_phone CHECK (
+        phone_number IS NULL OR phone_number ~ '^\+[1-9][0-9]{7,14}$'
+    )
+);
+
+CREATE TABLE purchase_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    facility_id UUID NOT NULL REFERENCES facilities(id) ON DELETE RESTRICT,
+    supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    purchase_order_number VARCHAR(50) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    ordered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expected_at TIMESTAMPTZ,
+    approved_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_purchase_orders_org_number UNIQUE (organization_id, purchase_order_number),
+    CONSTRAINT ck_purchase_orders_status CHECK (
+        status IN ('draft', 'pending_approval', 'approved', 'sent', 'partially_received', 'received', 'cancelled')
+    ),
+    CONSTRAINT ck_purchase_orders_expected CHECK (expected_at IS NULL OR expected_at >= ordered_at),
+    CONSTRAINT ck_purchase_orders_approval CHECK (
+        status NOT IN ('approved', 'sent', 'partially_received', 'received')
+        OR (approved_by_id IS NOT NULL AND approved_at IS NOT NULL)
+    )
+);
+
+CREATE TABLE purchase_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    purchase_order_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+    inventory_item_id UUID NOT NULL REFERENCES inventory_items(id) ON DELETE RESTRICT,
+    quantity_ordered NUMERIC(12,3) NOT NULL,
+    unit_cost NUMERIC(18,2) NOT NULL,
+    quantity_received NUMERIC(12,3) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_purchase_order_items_item UNIQUE (purchase_order_id, inventory_item_id),
+    CONSTRAINT ck_purchase_order_items_quantity CHECK (
+        quantity_ordered > 0 AND quantity_received >= 0 AND quantity_received <= quantity_ordered
+    ),
+    CONSTRAINT ck_purchase_order_items_cost CHECK (unit_cost >= 0)
+);
+
+CREATE TABLE goods_receipts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    purchase_order_id UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+    receipt_number VARCHAR(50) NOT NULL,
+    received_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(30) NOT NULL DEFAULT 'received',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_goods_receipts_number UNIQUE (receipt_number),
+    CONSTRAINT ck_goods_receipts_status CHECK (
+        status IN ('draft', 'received', 'cancelled')
+    )
+);
+
+CREATE TABLE goods_receipt_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    goods_receipt_id UUID NOT NULL REFERENCES goods_receipts(id) ON DELETE RESTRICT,
+    purchase_order_item_id UUID NOT NULL REFERENCES purchase_order_items(id) ON DELETE RESTRICT,
+    quantity_received NUMERIC(12,3) NOT NULL,
+    batch_number VARCHAR(100),
+    expiry_date DATE,
+    unit_cost NUMERIC(18,2) NOT NULL,
+    stock_batch_id UUID REFERENCES stock_batches(id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_goods_receipt_items_quantity CHECK (quantity_received > 0),
+    CONSTRAINT ck_goods_receipt_items_cost CHECK (unit_cost >= 0)
+);
+
+CREATE TABLE chart_of_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    account_code VARCHAR(50) NOT NULL,
+    account_name VARCHAR(200) NOT NULL,
+    account_type VARCHAR(30) NOT NULL,
+    parent_account_id UUID REFERENCES chart_of_accounts(id) ON DELETE RESTRICT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_chart_of_accounts_org_code UNIQUE (organization_id, account_code),
+    CONSTRAINT ck_chart_of_accounts_type CHECK (
+        account_type IN ('asset', 'liability', 'equity', 'revenue', 'expense')
+    ),
+    CONSTRAINT ck_chart_of_accounts_no_self_parent CHECK (parent_account_id IS NULL OR parent_account_id <> id)
+);
+
+CREATE TABLE fiscal_periods (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    name VARCHAR(100) NOT NULL,
+    starts_on DATE NOT NULL,
+    ends_on DATE NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'open',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_fiscal_periods_org_name UNIQUE (organization_id, name),
+    CONSTRAINT ck_fiscal_periods_status CHECK (status IN ('open', 'closed', 'locked')),
+    CONSTRAINT ck_fiscal_periods_dates CHECK (ends_on >= starts_on)
+);
+
+CREATE TABLE cost_centers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    facility_id UUID REFERENCES facilities(id) ON DELETE RESTRICT,
+    department_id UUID REFERENCES departments(id) ON DELETE RESTRICT,
+    code VARCHAR(50) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_cost_centers_org_code UNIQUE (organization_id, code),
+    CONSTRAINT ck_cost_centers_code_upper CHECK (code = UPPER(code))
+);
+
+CREATE TABLE journal_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    facility_id UUID REFERENCES facilities(id) ON DELETE RESTRICT,
+    journal_number VARCHAR(50) NOT NULL,
+    entry_date DATE NOT NULL,
+    description VARCHAR(250),
+    source_type VARCHAR(80),
+    source_id UUID,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    posted_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    posted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_journal_entries_org_number UNIQUE (organization_id, journal_number),
+    CONSTRAINT ck_journal_entries_status CHECK (status IN ('draft', 'posted', 'reversed')),
+    CONSTRAINT ck_journal_entries_posted CHECK (status <> 'posted' OR posted_at IS NOT NULL)
+);
+
+CREATE TABLE journal_lines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    journal_entry_id UUID NOT NULL REFERENCES journal_entries(id) ON DELETE RESTRICT,
+    account_id UUID NOT NULL REFERENCES chart_of_accounts(id) ON DELETE RESTRICT,
+    cost_center_id UUID REFERENCES cost_centers(id) ON DELETE RESTRICT,
+    debit NUMERIC(18,2) NOT NULL DEFAULT 0,
+    credit NUMERIC(18,2) NOT NULL DEFAULT 0,
+    description VARCHAR(250),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_journal_lines_amounts CHECK (
+        debit >= 0 AND credit >= 0 AND ((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0))
+    )
+);
+
+CREATE TABLE expenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+    facility_id UUID REFERENCES facilities(id) ON DELETE RESTRICT,
+    expense_number VARCHAR(50) NOT NULL,
+    expense_date DATE NOT NULL,
+    description VARCHAR(250) NOT NULL,
+    amount NUMERIC(18,2) NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'TZS',
+    account_id UUID NOT NULL REFERENCES chart_of_accounts(id) ON DELETE RESTRICT,
+    supplier_id UUID REFERENCES suppliers(id) ON DELETE RESTRICT,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_expenses_org_number UNIQUE (organization_id, expense_number),
+    CONSTRAINT ck_expenses_amount CHECK (amount >= 0),
+    CONSTRAINT ck_expenses_currency_upper CHECK (currency = UPPER(currency)),
+    CONSTRAINT ck_expenses_status CHECK (status IN ('draft', 'submitted', 'approved', 'paid', 'cancelled'))
+);
+
+CREATE TABLE supplier_invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    purchase_order_id UUID REFERENCES purchase_orders(id) ON DELETE RESTRICT,
+    invoice_number VARCHAR(80) NOT NULL,
+    invoice_date DATE NOT NULL,
+    due_date DATE,
+    subtotal NUMERIC(18,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    paid_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_supplier_invoices_supplier_number UNIQUE (supplier_id, invoice_number),
+    CONSTRAINT ck_supplier_invoices_money CHECK (
+        subtotal >= 0 AND tax_amount >= 0 AND total_amount >= 0 AND paid_amount >= 0
+    ),
+    CONSTRAINT ck_supplier_invoices_total CHECK (total_amount = subtotal + tax_amount),
+    CONSTRAINT ck_supplier_invoices_status CHECK (
+        status IN ('draft', 'received', 'approved', 'partially_paid', 'paid', 'cancelled')
+    ),
+    CONSTRAINT ck_supplier_invoices_due CHECK (due_date IS NULL OR due_date >= invoice_date)
+);
+
+-- ================================================================
 -- CROSS-TABLE VALIDATION FUNCTIONS AND TRIGGERS
 -- ================================================================
 
@@ -2996,6 +4555,524 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION validate_encounter_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    facility_org UUID;
+    patient_org UUID;
+    checkin_patient UUID;
+    checkin_facility UUID;
+    appointment_patient UUID;
+    appointment_facility UUID;
+    department_facility UUID;
+    specialty_facility UUID;
+    practitioner_facility UUID;
+BEGIN
+    SELECT organization_id INTO facility_org FROM facilities WHERE id = NEW.facility_id;
+    SELECT organization_id INTO patient_org FROM patients WHERE id = NEW.patient_id;
+    IF facility_org IS NULL OR patient_org IS NULL OR facility_org <> patient_org THEN
+        RAISE EXCEPTION 'Encounter patient must belong to the same organization as the facility';
+    END IF;
+
+    SELECT patient_id, facility_id INTO checkin_patient, checkin_facility
+    FROM patient_checkins
+    WHERE id = NEW.patient_checkin_id AND voided_at IS NULL;
+    IF checkin_patient IS NULL OR checkin_patient <> NEW.patient_id OR checkin_facility <> NEW.facility_id THEN
+        RAISE EXCEPTION 'Encounter check-in must belong to the same patient and facility';
+    END IF;
+
+    IF NEW.appointment_id IS NOT NULL THEN
+        SELECT patient_id, facility_id INTO appointment_patient, appointment_facility
+        FROM appointments
+        WHERE id = NEW.appointment_id;
+        IF appointment_patient IS NULL OR appointment_patient <> NEW.patient_id OR appointment_facility <> NEW.facility_id THEN
+            RAISE EXCEPTION 'Encounter appointment must belong to the same patient and facility';
+        END IF;
+    END IF;
+
+    IF NEW.department_id IS NOT NULL THEN
+        SELECT facility_id INTO department_facility FROM departments WHERE id = NEW.department_id;
+        IF department_facility IS NULL OR department_facility <> NEW.facility_id THEN
+            RAISE EXCEPTION 'Encounter department must belong to the same facility';
+        END IF;
+    END IF;
+
+    IF NEW.facility_specialty_id IS NOT NULL THEN
+        SELECT facility_id INTO specialty_facility FROM facility_specialties WHERE id = NEW.facility_specialty_id;
+        IF specialty_facility IS NULL OR specialty_facility <> NEW.facility_id THEN
+            RAISE EXCEPTION 'Encounter specialty must belong to the same facility';
+        END IF;
+    END IF;
+
+    IF NEW.attending_practitioner_facility_assignment_id IS NOT NULL THEN
+        SELECT facility_id INTO practitioner_facility
+        FROM practitioner_facility_assignments
+        WHERE id = NEW.attending_practitioner_facility_assignment_id AND is_active;
+        IF practitioner_facility IS NULL OR practitioner_facility <> NEW.facility_id THEN
+            RAISE EXCEPTION 'Encounter practitioner assignment must belong to the same facility';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_encounters_validate_scope
+BEFORE INSERT OR UPDATE OF facility_id, patient_id, patient_checkin_id, appointment_id, department_id,
+facility_specialty_id, attending_practitioner_facility_assignment_id, status
+ON encounters
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_scope();
+
+CREATE OR REPLACE FUNCTION validate_encounter_history_status()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    current_status VARCHAR(30);
+BEGIN
+    SELECT status INTO current_status FROM encounters WHERE id = NEW.encounter_id;
+    IF current_status IS NULL OR NEW.to_status <> current_status THEN
+        RAISE EXCEPTION 'Encounter history latest status must match encounter status';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_encounter_status_history_validate
+BEFORE INSERT ON encounter_status_history
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_history_status();
+
+CREATE OR REPLACE FUNCTION validate_encounter_practitioner_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    row_data JSONB := to_jsonb(NEW);
+    encounter_facility UUID;
+    field_name TEXT;
+    assignment_id UUID;
+    assignment_facility UUID;
+BEGIN
+    SELECT facility_id INTO encounter_facility
+    FROM encounters
+    WHERE id = (row_data ->> 'encounter_id')::UUID;
+
+    IF encounter_facility IS NULL THEN
+        RAISE EXCEPTION 'Clinical record encounter must exist';
+    END IF;
+
+    FOREACH field_name IN ARRAY ARRAY[
+        'performed_by_practitioner_facility_assignment_id',
+        'recorded_by_practitioner_facility_assignment_id',
+        'practitioner_facility_assignment_id',
+        'diagnosed_by_practitioner_facility_assignment_id',
+        'ordered_by_practitioner_facility_assignment_id',
+        'reported_by_practitioner_facility_assignment_id',
+        'verified_by_practitioner_facility_assignment_id',
+        'prepared_by_practitioner_facility_assignment_id',
+        'referred_by_practitioner_facility_assignment_id'
+    ]
+    LOOP
+        IF row_data ? field_name AND (row_data ->> field_name) IS NOT NULL THEN
+            assignment_id := (row_data ->> field_name)::UUID;
+            SELECT facility_id INTO assignment_facility
+            FROM practitioner_facility_assignments
+            WHERE id = assignment_id AND is_active;
+            IF assignment_facility IS NULL OR assignment_facility <> encounter_facility THEN
+                RAISE EXCEPTION 'Practitioner assignment must belong to the encounter facility';
+            END IF;
+        END IF;
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_triage_assessments_validate_scope
+BEFORE INSERT OR UPDATE ON triage_assessments
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_vital_signs_validate_scope
+BEFORE INSERT ON vital_signs
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_clinical_notes_validate_scope
+BEFORE INSERT OR UPDATE ON clinical_notes
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_encounter_diagnoses_validate_scope
+BEFORE INSERT ON encounter_diagnoses
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_lab_orders_validate_scope
+BEFORE INSERT OR UPDATE ON lab_orders
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_imaging_orders_validate_scope
+BEFORE INSERT OR UPDATE ON imaging_orders
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_encounter_procedures_validate_scope
+BEFORE INSERT OR UPDATE ON encounter_procedures
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_prescriptions_validate_scope
+BEFORE INSERT OR UPDATE ON prescriptions
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_nursing_notes_validate_scope
+BEFORE INSERT ON nursing_notes
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_discharge_summaries_validate_scope
+BEFORE INSERT OR UPDATE ON discharge_summaries
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_follow_up_plans_validate_scope
+BEFORE INSERT OR UPDATE ON follow_up_plans
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE TRIGGER trg_patient_referrals_validate_scope
+BEFORE INSERT OR UPDATE ON patient_referrals
+FOR EACH ROW EXECUTE FUNCTION validate_encounter_practitioner_scope();
+
+CREATE OR REPLACE FUNCTION validate_service_catalog_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    service_org UUID;
+    row_org UUID;
+BEGIN
+    IF NEW.billing_service_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT organization_id INTO service_org FROM services WHERE id = NEW.billing_service_id;
+    row_org := NEW.organization_id;
+    IF service_org IS NULL OR service_org <> row_org THEN
+        RAISE EXCEPTION 'Billing service must belong to the same organization';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_lab_tests_validate_billing_service
+BEFORE INSERT OR UPDATE OF organization_id, billing_service_id ON lab_tests
+FOR EACH ROW EXECUTE FUNCTION validate_service_catalog_scope();
+
+CREATE TRIGGER trg_imaging_services_validate_billing_service
+BEFORE INSERT OR UPDATE OF organization_id, billing_service_id ON imaging_services
+FOR EACH ROW EXECUTE FUNCTION validate_service_catalog_scope();
+
+CREATE TRIGGER trg_procedure_catalog_validate_billing_service
+BEFORE INSERT OR UPDATE OF organization_id, billing_service_id ON procedure_catalog
+FOR EACH ROW EXECUTE FUNCTION validate_service_catalog_scope();
+
+CREATE OR REPLACE FUNCTION validate_inventory_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    row_data JSONB := to_jsonb(NEW);
+    item_org UUID;
+    category_org UUID;
+    medication_org UUID;
+    location_org UUID;
+    location_facility UUID;
+    department_facility UUID;
+    batch_location UUID;
+BEGIN
+    IF TG_TABLE_NAME = 'inventory_items' THEN
+        SELECT organization_id INTO category_org FROM inventory_categories WHERE id = NEW.category_id;
+        IF category_org IS NOT NULL AND category_org <> NEW.organization_id THEN
+            RAISE EXCEPTION 'Inventory category must be global or belong to the same organization';
+        END IF;
+        IF NEW.medication_id IS NOT NULL THEN
+            SELECT organization_id INTO medication_org FROM medications WHERE id = NEW.medication_id;
+            IF medication_org IS NULL OR medication_org <> NEW.organization_id THEN
+                RAISE EXCEPTION 'Inventory medication must belong to the same organization';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'inventory_locations' THEN
+        IF NEW.department_id IS NOT NULL THEN
+            SELECT facility_id INTO department_facility FROM departments WHERE id = NEW.department_id;
+            IF department_facility IS NULL OR department_facility <> NEW.facility_id THEN
+                RAISE EXCEPTION 'Inventory location department must belong to the same facility';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'stock_batches' THEN
+        SELECT ii.organization_id INTO item_org FROM inventory_items ii WHERE ii.id = NEW.inventory_item_id;
+        SELECT f.organization_id INTO location_org
+        FROM inventory_locations il
+        JOIN facilities f ON f.id = il.facility_id
+        WHERE il.id = NEW.inventory_location_id;
+        IF item_org IS NULL OR location_org IS NULL OR item_org <> location_org THEN
+            RAISE EXCEPTION 'Stock batch item and location must belong to the same organization';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'stock_movements' THEN
+        SELECT inventory_location_id INTO batch_location FROM stock_batches WHERE id = NEW.stock_batch_id;
+        IF batch_location IS NULL OR batch_location <> NEW.inventory_location_id THEN
+            RAISE EXCEPTION 'Stock movement location must match the stock batch location';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'employee_department_assignments' THEN
+        SELECT efa.facility_id INTO location_facility
+        FROM employee_facility_assignments efa
+        WHERE efa.id = NEW.employee_facility_assignment_id;
+        SELECT facility_id INTO department_facility FROM departments WHERE id = NEW.department_id;
+        IF location_facility IS NULL OR department_facility IS NULL OR location_facility <> department_facility THEN
+            RAISE EXCEPTION 'Employee department assignment must match employee facility assignment';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'cost_centers' THEN
+        IF NEW.facility_id IS NOT NULL THEN
+            SELECT organization_id INTO location_org FROM facilities WHERE id = NEW.facility_id;
+            IF location_org IS NULL OR location_org <> NEW.organization_id THEN
+                RAISE EXCEPTION 'Cost center facility must belong to the same organization';
+            END IF;
+        END IF;
+        IF NEW.department_id IS NOT NULL THEN
+            SELECT facility_id INTO department_facility FROM departments WHERE id = NEW.department_id;
+            IF NEW.facility_id IS NULL OR department_facility IS NULL OR department_facility <> NEW.facility_id THEN
+                RAISE EXCEPTION 'Cost center department must belong to the selected facility';
+            END IF;
+        END IF;
+    ELSIF row_data ? 'facility_id' AND row_data ? 'organization_id' AND (row_data ->> 'facility_id') IS NOT NULL THEN
+        SELECT organization_id INTO location_org FROM facilities WHERE id = (row_data ->> 'facility_id')::UUID;
+        IF location_org IS NULL OR location_org <> (row_data ->> 'organization_id')::UUID THEN
+            RAISE EXCEPTION 'Facility must belong to the selected organization';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_inventory_items_validate_scope
+BEFORE INSERT OR UPDATE ON inventory_items
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_inventory_locations_validate_scope
+BEFORE INSERT OR UPDATE ON inventory_locations
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_stock_batches_validate_scope
+BEFORE INSERT OR UPDATE ON stock_batches
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_stock_movements_validate_scope
+BEFORE INSERT ON stock_movements
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_purchase_orders_validate_scope
+BEFORE INSERT OR UPDATE OF organization_id, facility_id ON purchase_orders
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_cost_centers_validate_scope
+BEFORE INSERT OR UPDATE ON cost_centers
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_journal_entries_validate_scope
+BEFORE INSERT OR UPDATE OF organization_id, facility_id ON journal_entries
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_expenses_validate_scope
+BEFORE INSERT OR UPDATE OF organization_id, facility_id ON expenses
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE TRIGGER trg_employee_department_assignments_validate_scope
+BEFORE INSERT OR UPDATE ON employee_department_assignments
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_scope();
+
+CREATE OR REPLACE FUNCTION validate_billing_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    encounter_facility UUID;
+    encounter_patient UUID;
+    facility_org UUID;
+    service_org UUID;
+    invoice_facility UUID;
+    invoice_patient UUID;
+    payment_facility UUID;
+    payment_patient UUID;
+    allocated_total NUMERIC(18,2);
+BEGIN
+    IF TG_TABLE_NAME = 'encounter_charges' THEN
+        SELECT facility_id, patient_id INTO encounter_facility, encounter_patient
+        FROM encounters WHERE id = NEW.encounter_id;
+        SELECT organization_id INTO facility_org FROM facilities WHERE id = encounter_facility;
+        SELECT organization_id INTO service_org FROM services WHERE id = NEW.service_id;
+        IF facility_org IS NULL OR service_org IS NULL OR facility_org <> service_org THEN
+            RAISE EXCEPTION 'Encounter charge service must belong to the encounter organization';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'invoices' THEN
+        IF NEW.encounter_id IS NOT NULL THEN
+            SELECT facility_id, patient_id INTO encounter_facility, encounter_patient
+            FROM encounters WHERE id = NEW.encounter_id;
+            IF encounter_facility IS NULL OR encounter_facility <> NEW.facility_id OR encounter_patient <> NEW.patient_id THEN
+                RAISE EXCEPTION 'Invoice encounter must match invoice facility and patient';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'payment_allocations' THEN
+        SELECT facility_id, patient_id INTO invoice_facility, invoice_patient
+        FROM invoices WHERE id = NEW.invoice_id;
+        SELECT facility_id, patient_id INTO payment_facility, payment_patient
+        FROM payments WHERE id = NEW.payment_id AND status = 'completed';
+        IF invoice_facility IS NULL OR payment_facility IS NULL
+           OR invoice_facility <> payment_facility OR invoice_patient <> payment_patient THEN
+            RAISE EXCEPTION 'Payment allocation requires a completed payment for the same invoice facility and patient';
+        END IF;
+
+        SELECT COALESCE(SUM(amount), 0) INTO allocated_total
+        FROM payment_allocations
+        WHERE payment_id = NEW.payment_id AND id <> NEW.id;
+        IF allocated_total + NEW.amount > (SELECT amount FROM payments WHERE id = NEW.payment_id) THEN
+            RAISE EXCEPTION 'Payment allocations cannot exceed payment amount';
+        END IF;
+
+        SELECT COALESCE(SUM(amount), 0) INTO allocated_total
+        FROM payment_allocations
+        WHERE invoice_id = NEW.invoice_id AND id <> NEW.id;
+        IF allocated_total + NEW.amount > (SELECT balance_amount + paid_amount FROM invoices WHERE id = NEW.invoice_id) THEN
+            RAISE EXCEPTION 'Payment allocations cannot exceed invoice total';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_encounter_charges_validate_scope
+BEFORE INSERT OR UPDATE ON encounter_charges
+FOR EACH ROW EXECUTE FUNCTION validate_billing_scope();
+
+CREATE TRIGGER trg_invoices_validate_scope
+BEFORE INSERT OR UPDATE OF facility_id, patient_id, encounter_id ON invoices
+FOR EACH ROW EXECUTE FUNCTION validate_billing_scope();
+
+CREATE TRIGGER trg_payment_allocations_validate_scope
+BEFORE INSERT OR UPDATE ON payment_allocations
+FOR EACH ROW EXECUTE FUNCTION validate_billing_scope();
+
+CREATE OR REPLACE FUNCTION validate_bed_assignment_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    admission_facility UUID;
+    bed_facility UUID;
+BEGIN
+    SELECT e.facility_id INTO admission_facility
+    FROM admissions a
+    JOIN encounters e ON e.id = a.encounter_id
+    WHERE a.id = NEW.admission_id;
+
+    SELECT w.facility_id INTO bed_facility
+    FROM beds b
+    JOIN inpatient_rooms ir ON ir.id = b.inpatient_room_id
+    JOIN wards w ON w.id = ir.ward_id
+    WHERE b.id = NEW.bed_id;
+
+    IF admission_facility IS NULL OR bed_facility IS NULL OR admission_facility <> bed_facility THEN
+        RAISE EXCEPTION 'Bed assignment must stay within the admission facility';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_bed_assignments_validate_scope
+BEFORE INSERT OR UPDATE ON bed_assignments
+FOR EACH ROW EXECUTE FUNCTION validate_bed_assignment_scope();
+
+CREATE OR REPLACE FUNCTION validate_journal_entry_posting()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    debit_total NUMERIC(18,2);
+    credit_total NUMERIC(18,2);
+BEGIN
+    IF NEW.status <> 'posted' THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT COALESCE(SUM(debit), 0), COALESCE(SUM(credit), 0)
+      INTO debit_total, credit_total
+    FROM journal_lines
+    WHERE journal_entry_id = NEW.id;
+
+    IF debit_total <= 0 OR debit_total <> credit_total THEN
+        RAISE EXCEPTION 'Posted journal entries must have balanced debit and credit lines';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_entries_validate_posting
+BEFORE INSERT OR UPDATE OF status ON journal_entries
+FOR EACH ROW EXECUTE FUNCTION validate_journal_entry_posting();
+
+CREATE OR REPLACE FUNCTION validate_journal_line_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    journal_org UUID;
+    account_org UUID;
+    center_org UUID;
+    journal_status VARCHAR(30);
+BEGIN
+    SELECT organization_id, status INTO journal_org, journal_status
+    FROM journal_entries
+    WHERE id = NEW.journal_entry_id;
+    IF journal_status = 'posted' THEN
+        RAISE EXCEPTION 'Posted journal entry lines cannot be changed';
+    END IF;
+
+    SELECT organization_id INTO account_org FROM chart_of_accounts WHERE id = NEW.account_id;
+    IF account_org IS NULL OR account_org <> journal_org THEN
+        RAISE EXCEPTION 'Journal line account must belong to the journal organization';
+    END IF;
+
+    IF NEW.cost_center_id IS NOT NULL THEN
+        SELECT organization_id INTO center_org FROM cost_centers WHERE id = NEW.cost_center_id;
+        IF center_org IS NULL OR center_org <> journal_org THEN
+            RAISE EXCEPTION 'Journal line cost center must belong to the journal organization';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_lines_validate_scope
+BEFORE INSERT OR UPDATE ON journal_lines
+FOR EACH ROW EXECUTE FUNCTION validate_journal_line_scope();
+
+CREATE OR REPLACE FUNCTION prevent_posted_journal_line_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    journal_status VARCHAR(30);
+BEGIN
+    SELECT status INTO journal_status
+    FROM journal_entries
+    WHERE id = OLD.journal_entry_id;
+
+    IF journal_status = 'posted' THEN
+        RAISE EXCEPTION 'Posted journal entry lines cannot be deleted';
+    END IF;
+    RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER trg_journal_lines_prevent_posted_delete
+BEFORE DELETE ON journal_lines
+FOR EACH ROW EXECUTE FUNCTION prevent_posted_journal_line_delete();
+
 -- ================================================================
 -- APPEND-ONLY PROTECTION FOR DOMAIN HISTORY TABLES
 -- ================================================================
@@ -3023,6 +5100,14 @@ FOR EACH ROW EXECUTE FUNCTION prevent_history_mutation();
 
 CREATE TRIGGER trg_audit_logs_append_only
 BEFORE UPDATE OR DELETE ON audit_logs
+FOR EACH ROW EXECUTE FUNCTION prevent_history_mutation();
+
+CREATE TRIGGER trg_encounter_status_history_append_only
+BEFORE UPDATE OR DELETE ON encounter_status_history
+FOR EACH ROW EXECUTE FUNCTION prevent_history_mutation();
+
+CREATE TRIGGER trg_stock_movements_append_only
+BEFORE UPDATE OR DELETE ON stock_movements
 FOR EACH ROW EXECUTE FUNCTION prevent_history_mutation();
 
 -- ================================================================
@@ -3153,6 +5238,84 @@ CREATE INDEX idx_report_exports_requester_time ON report_exports (requested_by_i
 CREATE INDEX idx_report_exports_org_status ON report_exports (organization_id, status, created_at DESC);
 CREATE INDEX idx_report_exports_facility ON report_exports (facility_id);
 
+CREATE INDEX idx_encounters_patient_time ON encounters (patient_id, opened_at DESC);
+CREATE INDEX idx_encounters_facility_status_time ON encounters (facility_id, status, opened_at);
+CREATE INDEX idx_encounters_checkin ON encounters (patient_checkin_id);
+CREATE INDEX idx_encounter_status_history_time ON encounter_status_history (encounter_id, changed_at);
+CREATE INDEX idx_triage_assessments_encounter ON triage_assessments (encounter_id, completed_at);
+CREATE INDEX idx_vital_signs_encounter_time ON vital_signs (encounter_id, recorded_at DESC);
+CREATE INDEX idx_patient_allergies_patient_status ON patient_allergies (patient_id, status);
+CREATE INDEX idx_patient_conditions_patient_status ON patient_conditions (patient_id, status);
+CREATE INDEX idx_clinical_notes_encounter_time ON clinical_notes (encounter_id, created_at DESC);
+CREATE INDEX idx_diagnosis_codes_lookup ON diagnosis_codes (coding_system, code);
+CREATE INDEX idx_encounter_diagnoses_time ON encounter_diagnoses (encounter_id, diagnosed_at DESC);
+
+CREATE INDEX idx_services_org_category ON services (organization_id, service_category, is_active);
+CREATE INDEX idx_service_prices_service_dates ON service_prices (service_id, effective_from, effective_to);
+CREATE INDEX idx_encounter_charges_encounter_status ON encounter_charges (encounter_id, status);
+CREATE INDEX idx_encounter_charges_source_lookup ON encounter_charges (source_type, source_reference_id)
+    WHERE source_reference_id IS NOT NULL;
+
+CREATE INDEX idx_lab_tests_org_active ON lab_tests (organization_id, is_active);
+CREATE INDEX idx_lab_test_components_test_order ON lab_test_components (lab_test_id, display_order);
+CREATE INDEX idx_lab_orders_encounter_time ON lab_orders (encounter_id, ordered_at DESC);
+CREATE INDEX idx_lab_orders_status_time ON lab_orders (status, ordered_at);
+CREATE INDEX idx_lab_order_items_order ON lab_order_items (lab_order_id);
+CREATE INDEX idx_lab_specimens_number ON lab_specimens (specimen_number);
+CREATE INDEX idx_lab_result_values_item ON lab_result_values (lab_order_item_id);
+
+CREATE INDEX idx_imaging_services_org_active ON imaging_services (organization_id, is_active);
+CREATE INDEX idx_imaging_orders_encounter_time ON imaging_orders (encounter_id, ordered_at DESC);
+CREATE INDEX idx_imaging_order_items_order ON imaging_order_items (imaging_order_id);
+CREATE INDEX idx_imaging_reports_item ON imaging_reports (imaging_order_item_id);
+CREATE INDEX idx_procedure_catalog_org_active ON procedure_catalog (organization_id, is_active);
+CREATE INDEX idx_encounter_procedures_encounter_time ON encounter_procedures (encounter_id, performed_at DESC);
+
+CREATE INDEX idx_medications_org_active ON medications (organization_id, is_active);
+CREATE INDEX idx_prescriptions_encounter_time ON prescriptions (encounter_id, prescribed_at DESC);
+CREATE INDEX idx_prescription_items_prescription ON prescription_items (prescription_id);
+CREATE INDEX idx_medication_dispenses_item ON medication_dispenses (prescription_item_id);
+
+CREATE INDEX idx_inventory_items_org_active ON inventory_items (organization_id, is_active);
+CREATE INDEX idx_inventory_locations_facility_type ON inventory_locations (facility_id, location_type);
+CREATE INDEX idx_stock_batches_item_location ON stock_batches (inventory_item_id, inventory_location_id);
+CREATE INDEX idx_stock_batches_expiry ON stock_batches (expiry_date) WHERE expiry_date IS NOT NULL;
+CREATE INDEX idx_stock_movements_batch_time ON stock_movements (stock_batch_id, occurred_at DESC);
+
+CREATE INDEX idx_invoices_patient_time ON invoices (patient_id, issued_at DESC);
+CREATE INDEX idx_invoices_facility_status_time ON invoices (facility_id, status, issued_at);
+CREATE INDEX idx_invoice_items_invoice ON invoice_items (invoice_id);
+CREATE INDEX idx_payments_patient_time ON payments (patient_id, received_at DESC);
+CREATE INDEX idx_payment_allocations_invoice ON payment_allocations (invoice_id);
+CREATE INDEX idx_payment_refunds_payment ON payment_refunds (payment_id);
+CREATE INDEX idx_patient_insurance_policies_patient ON patient_insurance_policies (patient_id, status);
+CREATE INDEX idx_insurance_claims_invoice ON insurance_claims (invoice_id, status);
+
+CREATE INDEX idx_wards_facility ON wards (facility_id, is_active);
+CREATE INDEX idx_inpatient_rooms_ward ON inpatient_rooms (ward_id, is_active);
+CREATE INDEX idx_beds_status ON beds (status, is_active);
+CREATE INDEX idx_admissions_encounter ON admissions (encounter_id);
+CREATE INDEX idx_admissions_status_time ON admissions (status, admitted_at);
+CREATE INDEX idx_bed_assignments_bed_time ON bed_assignments (bed_id, assigned_at);
+CREATE INDEX idx_nursing_notes_encounter_time ON nursing_notes (encounter_id, recorded_at DESC);
+CREATE INDEX idx_medication_administrations_admission_time
+    ON medication_administrations (admission_id, scheduled_at);
+CREATE INDEX idx_discharge_summaries_encounter ON discharge_summaries (encounter_id);
+
+CREATE INDEX idx_follow_up_plans_encounter ON follow_up_plans (encounter_id, follow_up_date);
+CREATE INDEX idx_patient_referrals_encounter ON patient_referrals (encounter_id, created_at DESC);
+CREATE INDEX idx_employees_org_number ON employees (organization_id, employee_number);
+CREATE INDEX idx_employee_facility_assignments_employee ON employee_facility_assignments (employee_id, is_active);
+CREATE INDEX idx_employee_attendance_employee_time ON employee_attendance (employee_id, clock_in DESC);
+CREATE INDEX idx_employee_shifts_facility_time ON employee_shifts (facility_id, starts_at, ends_at);
+CREATE INDEX idx_payroll_entries_employee ON payroll_entries (employee_id);
+CREATE INDEX idx_purchase_orders_facility_status_time ON purchase_orders (facility_id, status, ordered_at);
+CREATE INDEX idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
+CREATE INDEX idx_goods_receipts_order ON goods_receipts (purchase_order_id);
+CREATE INDEX idx_journal_entries_org_date_status ON journal_entries (organization_id, entry_date, status);
+CREATE INDEX idx_journal_lines_entry ON journal_lines (journal_entry_id);
+CREATE INDEX idx_cost_centers_org ON cost_centers (organization_id, is_active);
+
 -- ================================================================
 -- AUTOMATIC updated_at TRIGGERS
 -- ================================================================
@@ -3205,7 +5368,69 @@ BEGIN
         'patient_notifications',
         'user_push_devices',
         'facility_flow_settings',
-        'report_exports'
+        'report_exports',
+        'encounters',
+        'triage_assessments',
+        'patient_allergies',
+        'patient_conditions',
+        'clinical_notes',
+        'diagnosis_codes',
+        'services',
+        'service_prices',
+        'encounter_charges',
+        'lab_tests',
+        'lab_test_components',
+        'lab_orders',
+        'lab_order_items',
+        'lab_specimens',
+        'lab_result_values',
+        'imaging_services',
+        'imaging_orders',
+        'imaging_order_items',
+        'imaging_reports',
+        'procedure_catalog',
+        'encounter_procedures',
+        'medications',
+        'prescriptions',
+        'prescription_items',
+        'inventory_categories',
+        'inventory_items',
+        'inventory_locations',
+        'stock_batches',
+        'invoices',
+        'payments',
+        'payment_refunds',
+        'insurance_providers',
+        'insurance_plans',
+        'patient_insurance_policies',
+        'insurance_claims',
+        'insurance_claim_items',
+        'wards',
+        'inpatient_rooms',
+        'beds',
+        'admissions',
+        'medication_administrations',
+        'discharge_summaries',
+        'follow_up_plans',
+        'patient_referrals',
+        'employees',
+        'employment_contracts',
+        'employee_facility_assignments',
+        'employee_department_assignments',
+        'employee_attendance',
+        'employee_leave_requests',
+        'employee_shifts',
+        'payroll_periods',
+        'payroll_entries',
+        'purchase_orders',
+        'purchase_order_items',
+        'goods_receipts',
+        'chart_of_accounts',
+        'fiscal_periods',
+        'cost_centers',
+        'journal_entries',
+        'expenses',
+        'supplier_invoices'
     ]
     LOOP
         EXECUTE format(
@@ -3232,6 +5457,66 @@ COMMENT ON TABLE queue_wait_time_predictions IS
 
 COMMENT ON TABLE audit_logs IS
 'Append-only security and administrative audit trail. Sensitive values must be redacted before insertion.';
+
+COMMENT ON TABLE encounters IS
+'Hospital visit container linking check-in, appointment, patient, practitioner, and downstream clinical/billing activity.';
+
+COMMENT ON TABLE encounter_status_history IS
+'Append-only encounter lifecycle history from arrival through triage, consultation, lab, pharmacy, billing, admission, or completion.';
+
+COMMENT ON TABLE triage_assessments IS
+'Clinical triage record for an encounter, including priority level and encrypted complaint notes.';
+
+COMMENT ON TABLE vital_signs IS
+'Point-in-time vital observations for an encounter.';
+
+COMMENT ON TABLE clinical_notes IS
+'Encrypted practitioner clinical notes for consultation, progress, review, specialist, and discharge documentation.';
+
+COMMENT ON TABLE encounter_diagnoses IS
+'Encounter diagnosis records supporting coded or free-text diagnoses with one primary diagnosis per encounter.';
+
+COMMENT ON TABLE services IS
+'Organization-level billable service catalogue for consultations, labs, imaging, procedures, pharmacy, admission, and other charges.';
+
+COMMENT ON TABLE lab_orders IS
+'Laboratory order header linked to a clinical encounter and ordering practitioner.';
+
+COMMENT ON TABLE imaging_orders IS
+'Imaging order header linked to a clinical encounter and ordering practitioner.';
+
+COMMENT ON TABLE prescriptions IS
+'Medication prescription header linked to a clinical encounter and prescribing practitioner.';
+
+COMMENT ON TABLE inventory_items IS
+'Organization inventory catalogue for medications, consumables, equipment, and other stocked items.';
+
+COMMENT ON TABLE stock_movements IS
+'Append-only inventory movement ledger. Corrections require a new reversing movement.';
+
+COMMENT ON TABLE invoices IS
+'Patient billing invoice header for encounter or standalone facility charges.';
+
+COMMENT ON TABLE insurance_claims IS
+'Insurance claim header linked to a patient policy and invoice.';
+
+COMMENT ON TABLE admissions IS
+'Inpatient admission record linked to an encounter.';
+
+COMMENT ON TABLE bed_assignments IS
+'Bed occupancy history for inpatient admissions.';
+
+COMMENT ON TABLE employees IS
+'HR employee profile linked optionally to a system user and/or practitioner profile.';
+
+COMMENT ON TABLE payroll_entries IS
+'Payroll calculation record for one employee within one payroll period.';
+
+COMMENT ON TABLE purchase_orders IS
+'Procurement purchase order header for supplier orders.';
+
+COMMENT ON TABLE journal_entries IS
+'Accounting journal header. Posted journals must balance debit and credit lines.';
 
 COMMENT ON COLUMN appointments.reason_for_visit_encrypted IS
 'Application-encrypted sensitive visit reason. Never log or expose without authorization.';
