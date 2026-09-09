@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -11,7 +11,9 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
-ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()]
+ALLOWED_HOSTS = [
+    host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host.strip()
+]
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "").split(",")
@@ -40,6 +42,7 @@ INSTALLED_APPS = [
     "apps.scheduling",
     "apps.queueing",
     "apps.clinical",
+    "apps.laboratory",
     "apps.checkins",
     "apps.notifications",
     "apps.reporting",
@@ -116,9 +119,7 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
     "EXCEPTION_HANDLER": "common.exceptions.handlers.custom_exception_handler",
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "apps.accounts.authentication.CookieJWTAuthentication",
-    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": ("apps.accounts.authentication.CookieJWTAuthentication",),
 }
 
 SPECTACULAR_SETTINGS = {
@@ -133,43 +134,47 @@ SPECTACULAR_SETTINGS = {
         },
         {
             "name": "User Management APIs",
-            "description": "Administrative user management and user-scoped membership or role reads.",
+            "description": "Administrative users, memberships, and role reads.",
         },
         {
             "name": "Authorization APIs",
-            "description": "Roles, permissions, memberships, and role assignment management endpoints.",
+            "description": "Roles, permissions, memberships, and role assignments.",
         },
         {
             "name": "Facility Management APIs",
-            "description": "Organizations, facilities, departments, specialties, service points, schedules, and flow settings.",
+            "description": "Organizations, facilities, departments, and service points.",
         },
         {
             "name": "Patient Management APIs",
-            "description": "Patient registration, identifiers, addresses, related persons, contacts, and access grants.",
+            "description": "Patients, identifiers, addresses, relationships, and access grants.",
         },
         {
             "name": "Practitioner Management APIs",
-            "description": "Practitioner registration, assignments, credential types, and credential verification workflows.",
+            "description": "Practitioners, assignments, credentials, and verification.",
         },
         {
             "name": "Scheduling Management APIs",
-            "description": "Practitioner availability, leave, shifts, appointment slots, appointments, and status history workflows.",
+            "description": "Availability, leave, shifts, slots, and appointments.",
         },
         {
             "name": "Check-in Management APIs",
-            "description": "Patient arrivals, appointment check-ins, walk-in check-ins, QR token issuance, and token consumption workflows.",
+            "description": "Arrivals, appointment check-ins, walk-ins, and QR tokens.",
         },
         {
             "name": "Queueing Management APIs",
-            "description": "Queue lifecycle, queue entries, patient calling, service progress, transfers, and append-only queue events.",
+            "description": "Queues, patient calling, service progress, and transfers.",
+        },
+        {
+            "name": "Laboratory APIs",
+            "description": "Lab tests, orders, specimens, results, and verification.",
         },
         {
             "name": "Intelligence APIs",
-            "description": "Rule-based wait predictions, statistical arrival forecasts, slot suggestions, and prediction evaluation.",
+            "description": "Wait predictions, arrival forecasts, and slot suggestions.",
         },
         {
             "name": "Notification Management APIs",
-            "description": "Patient notifications, delivery workflows, factory actions, and push device registration.",
+            "description": "Patient notifications, delivery, and push device registration.",
         },
         {
             "name": "Reporting APIs",
@@ -177,7 +182,7 @@ SPECTACULAR_SETTINGS = {
         },
         {
             "name": "Audit APIs",
-            "description": "Append-only audit logs, secure metadata, resource history, actor history, and audit summaries.",
+            "description": "Append-only audit logs, metadata, history, and summaries.",
         },
     ],
 }

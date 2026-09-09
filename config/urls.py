@@ -1,6 +1,6 @@
-from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
@@ -21,6 +21,7 @@ urlpatterns = [
     path("api/v1/", include("apps.checkins.urls")),
     path("api/v1/", include("apps.queueing.urls")),
     path("api/v1/", include("apps.clinical.urls")),
+    path("api/v1/", include("apps.laboratory.urls")),
     path("api/v1/", include("apps.intelligence.urls")),
     path("api/v1/", include("apps.notifications.urls")),
     path("api/v1/", include("apps.reporting.urls")),
