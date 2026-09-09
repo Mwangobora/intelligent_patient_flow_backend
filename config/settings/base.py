@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.clinical",
     "apps.laboratory",
     "apps.pharmacy",
+    "apps.billing",
     "apps.checkins",
     "apps.notifications",
     "apps.reporting",
@@ -172,6 +173,10 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "Pharmacy APIs",
             "description": "Medications, prescriptions, dispensing, and pharmacy review.",
+        },
+        {
+            "name": "Billing APIs",
+            "description": "Services, charges, invoices, payments, and refunds.",
         },
         {
             "name": "Intelligence APIs",
